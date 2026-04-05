@@ -1,11 +1,14 @@
 {
+  "name": "backend",
+  "version": "1.0.0",
   "scripts": {
-    "dev": "bun --watch ./src/index.js"
+    "dev": "bun --watch ./src/index.js",
+    "build": "prisma generate",
+    "start": "node ./src/index.js"
   },
   "dependencies": {
     "@clerk/backend": "^3.2.3",
     "@prisma/client": "6",
-    "@types/node": "^25.5.2",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
