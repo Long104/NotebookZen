@@ -12,7 +12,7 @@ export default function CreateMenu() {
   // When making a fetch call:
 
 
-  async function createZenNote(e: any) {
+  async function createZenNote(e) {
     e.preventDefault();
     const token = await getToken();
     console.log("zen successfully");
