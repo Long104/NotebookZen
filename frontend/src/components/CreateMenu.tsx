@@ -12,15 +12,18 @@ export default function CreateMenu() {
   // When making a fetch call:
 
 
-  async function createZenNote(e) {
+  async function createZenNote(e:any) {
     e.preventDefault();
     const token = await getToken();
-    console.log("zen successfully");
-    if (title == "") {
+    if (!token) {
+      setError("You must be signed in to create a note.");
+      return;
+    }
+    if (!title) {
       setError("title is required.");
       return;
     }
-    await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -28,6 +31,12 @@ export default function CreateMenu() {
       },
       body: JSON.stringify({ title, content }),
     });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setError(data?.detail || `Request failed with status ${res.status}`);
+      return;
+    }
 
     setTitle("");
     setContent("");

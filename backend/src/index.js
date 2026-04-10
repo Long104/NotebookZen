@@ -5,6 +5,7 @@ const webhookRoutes = require("./routes/webhooks/clerk");
 const app = express();
 const port = 8000;
 const { requireAuth } = require("./middleware/auth");
+require("dotenv").config();
 
 // Mount webhook routes
 app.use("/api/webhooks", webhookRoutes);
@@ -13,7 +14,7 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: process.env.FRONTEND_URL,
   }),
 );
 
@@ -26,6 +27,7 @@ app.get("/", (req, res) => {
 // Get all notes (for the logged-in user only)
 app.get("/notes", requireAuth, async (req, res) => {
   try {
+    console.log("hello")
     const notes = await prisma.note.findMany({
       where: {
         user: { clerkId: req.auth.userId },
