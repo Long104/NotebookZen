@@ -27,7 +27,6 @@ app.get("/", (req, res) => {
 // Get all notes (for the logged-in user only)
 app.get("/notes", requireAuth, async (req, res) => {
   try {
-    console.log("hello")
     const notes = await prisma.note.findMany({
       where: {
         user: { clerkId: req.auth.userId },
