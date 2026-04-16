@@ -1,41 +1,55 @@
 "use client";
+
 import Image from "next/image";
-import {
-  Show,
-  SignInButton,
-  UserButton,
-} from "@clerk/nextjs";
+import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { SidebarInset } from "@/components/ui/sidebar";
+import ThemeToggle from "@/components/ThemeToggle";
+import { useChatPanel } from "@/context/ChatPanelContext";
+import { MessageSquare } from "lucide-react";
 
 export default function Navbar() {
-  return (
-    <div className="flex">
-      <SidebarTrigger />
-      <nav className="border-white border-2 flex-1 h-30 sm:h-20 flex flex-col sm:flex-row justify-between items-center p-5">
-        <div className="flex items-center gap-3">
-          <Image
-            src="/zenLogo2.png"
-            alt="Logo"
-            width={40}
-            height={40}
-            className="rounded-full"
-          />
-          <div className="hidden md:block">ZenNote</div>
+    const { isOpen, togglePanel } = useChatPanel();
+    const { isSignedIn } = useUser();
+
+    return (
+        <div className="flex items-center h-16 px-4">
+            <SidebarTrigger />
+            <nav className="flex-1 flex justify-between items-center px-4">
+                <div className="flex items-center gap-3">
+                    <Image
+                        src="/zenLogo2.png"
+                        alt="Logo"
+                        width={32}
+                        height={32}
+                        className="rounded-full"
+                    />
+                    <span className="text-sm font-medium tracking-wide hidden sm:block">
+                        ZenNote
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <ThemeToggle />
+                    <button
+                        onClick={togglePanel}
+                        className={`zen-btn-ghost p-2 transition-colors duration-300 ${
+                            isOpen
+                                ? "text-[var(--zen-primary)] bg-[var(--zen-primary-container)]"
+                                : ""
+                        }`}
+                        title="Toggle AI Chat"
+                    >
+                        <MessageSquare size={16} />
+                    </button>
+                    {!isSignedIn && (
+                        <SignInButton mode="modal" redirectTo="/dashboard">
+                            <button className="zen-btn-primary text-xs">
+                                Sign In
+                            </button>
+                        </SignInButton>
+                    )}
+                    {isSignedIn && <UserButton afterSignOutUrl="/" />}
+                </div>
+            </nav>
         </div>
-        <div className="flex gap-4 items-center">
-          <header className="flex justify-end items-center p-4 gap-4 h-16">
-            <Show when="signed-out">
-              <div className="bg-violet-600 p-2 rounded-md cursor-pointer">
-                <SignInButton />
-              </div>
-            </Show>
-            <Show when="signed-in">
-              <UserButton />
-            </Show>
-          </header>
-        </div>
-      </nav>
-    </div>
-  );
+    );
 }

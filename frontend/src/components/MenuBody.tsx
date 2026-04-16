@@ -1,67 +1,69 @@
 import Image from "next/image";
 import Card from "@/components/Card";
 import Link from "next/link";
+import { PenLine, List, Share2 } from "lucide-react";
+import { useChatPanel } from "@/context/ChatPanelContext";
+import { MessageSquare } from "lucide-react";
+
+function AiChatCard() {
+    const { openPanel } = useChatPanel();
+    return (
+        <div onClick={openPanel} className="cursor-pointer">
+            <Card
+                icon={<MessageSquare size={24} />}
+                title="AI Chat"
+                description="Ask questions about your notes"
+            />
+        </div>
+    );
+}
 
 export default function MenuBody() {
-  return (
-    <div className="p-5">
-      {/*Main body section */}
-      <div className="py-10 gap-y-10">
-        <Image
-          src="/BodyLogo.jpg"
-          alt="BodyLogo"
-          width={120}
-          height={120}
-          className="rounded-full  mx-auto"
-        />
-        {/*Title */}
-        <h1 className=" text-3xl text-center pt-10">
-          Calm yourself by Jotting
-        </h1>
-        {/*Slogan */}
-        <p className="text-center pt-10 text-lg">
-          Store your gold ideas, manage and scale your ideas, and links your
-          insights in one simple concept
-        </p>
-      </div>
-      {/*Cards section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-x-30 gap-y-10 h-full w-full">
-        <Link href="/create">
-          <Card
-            src="/createLogo.jpg"
-            name="createLogo"
-            title="Create"
-            description="Start a new fresh ideas"
-          />
-        </Link>
-        <Link href="/realShowList">
-          <Card
-            src="/saveLogo.png"
-            name="saveLogo"
-            title="Save List"
-            description="Store and manage your ideas"
-          />
-        </Link>
+    return (
+        <div className="max-w-4xl mx-auto px-8 py-16">
+            <div className="flex flex-col items-center gap-8 py-16">
+                <Image
+                    src="/BodyLogo.jpg"
+                    alt="BodyLogo"
+                    width={80}
+                    height={80}
+                    className="rounded-full"
+                />
+                <div className="flex flex-col items-center gap-4">
+                    <h1 className="text-3xl font-medium tracking-tight">
+                        Calm yourself by Jotting
+                    </h1>
+                    <p className="text-[var(--zen-on-surface-variant)] text-center max-w-md leading-relaxed">
+                        Store your golden ideas, manage and scale your thoughts,
+                        and link your insights in one simple concept.
+                    </p>
+                </div>
+            </div>
 
-        {/* Target the 3rd card only on mobile/tablet */}
-        <div className="col-span-1 md:col-span-2 lg:col-span-1 flex justify-center w-full">
-          <Card
-            src="/mappingLogo.png"
-            name="mappingLogo"
-            title="Mapping"
-            description="Connect and links your ideas"
-          />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <Link href="/create">
+                    <Card
+                        icon={<PenLine size={24} />}
+                        title="Create"
+                        description="Start a fresh idea"
+                    />
+                </Link>
+                <Link href="/realShowList">
+                    <Card
+                        icon={<List size={24} />}
+                        title="Save List"
+                        description="Store and manage your ideas"
+                    />
+                </Link>
+                <Link href="/create">
+                    <Card
+                        icon={<Share2 size={24} />}
+                        title="Mapping"
+                        description="Connect and link your ideas"
+                    />
+                </Link>
+                <AiChatCard />
+            </div>
         </div>
-
-        <Link href="/chat">
-          <Card
-            src="/mappingLogo.png"
-            name="chatLogo"
-            title="AI Chat"
-            description="Ask questions about your notes"
-          />
-        </Link>
-      </div>
-    </div>
-  );
+    );
 }
