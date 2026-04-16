@@ -1,43 +1,21 @@
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
+    CardContent,
 } from "@/components/ui/card";
 
-import Image from "next/image";
-
 type CardSmallProps = {
-  src: string;
-  name: string;
-  title: string;
-  description: string;
+    title: string;
+    description: string;
+    icon: React.ReactNode;
 };
-export default function CardSmall({
-  src,
-  name,
-  title,
-  description,
-}: CardSmallProps) {
-  return (
-    <Card className="mx-auto w-full max-w-sm hover:bg-gray-700">
-      <CardHeader>
-        <Image
-          src={src}
-          alt={name}
-          width={10}
-          height={10}
-          className="rounded-full mx-auto w-10 h-10"
-        />
-      </CardHeader>
-      <CardContent className="text-center text-lg lg:text-2xl">
-        {title}
-      </CardContent>
-      <CardContent className="text-center  lg:text-sm xl:text-lg">
-        {description}
-      </CardContent>
-    </Card>
-  );
+
+export default function CardSmall({ title, description, icon }: CardSmallProps) {
+    return (
+        <div className="zen-card flex flex-col gap-3 items-center text-center py-8">
+            <div className="text-[var(--zen-primary)]">{icon}</div>
+            <CardContent className="text-lg font-medium">{title}</CardContent>
+            <CardContent className="text-sm text-[var(--zen-on-surface-variant)]">
+                {description}
+            </CardContent>
+        </div>
+    );
 }

@@ -1,29 +1,29 @@
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
+import Link from "next/link";
+
 export default function CreateToprow() {
-  return (
-    <div
-      className="flex flex-wrap justify-around w-[80%] border-2 border-red-300
-      max-[1280px]:gap-8
-      max-[1024px]:gap-4
-      max-[640px]:flex-col items-center
-    "
-    >
-      {/*Back to menu button */}
-      <div className="flex items-center ">
-        <ArrowLeft />
-        <div>Back to Menu</div>
-      </div>
-      {/*Title */}
-      <div className="text-2xl">Create New Note</div>
-      {/*View all notes button */}
-      <div className="flex border-2 border-purple-400">
-        <Button variant="outline">
-          <Menu />
-          Views All Notes
-        </Button>
-      </div>
-    </div>
-  );
+    return (
+        <div className="flex justify-between items-center w-full max-w-3xl px-6">
+            <Link
+                href="/"
+                className="zen-btn-ghost flex items-center gap-2 text-sm"
+            >
+                <ArrowLeft size={16} />
+                Back to Menu
+            </Link>
+
+            <div className="text-lg font-medium tracking-tight">
+                Create New Note
+            </div>
+
+            <Link href="/realShowList">
+                <Button variant="outline" className="text-xs">
+                    <Menu size={14} />
+                    View All Notes
+                </Button>
+            </Link>
+        </div>
+    );
 }

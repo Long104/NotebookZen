@@ -1,93 +1,90 @@
 "use client";
-import { StickyNote } from "lucide-react";
-import { X } from "lucide-react";
+
+import { StickyNote, X } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import ZenEditor from "@/components/editor/ZenEditor";
 
 export default function CreateMenu() {
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [error, setError] = useState("");
-  const { getToken } = useAuth();
-  // When making a fetch call:
+    const [title, setTitle] = useState("");
+    const [content, setContent] = useState("");
+    const [error, setError] = useState("");
+    const { getToken } = useAuth();
+    const router = useRouter();
 
+    async function createZenNote(e: React.FormEvent) {
+        e.preventDefault();
+        const token = await getToken();
+        if (!token) {
+            setError("You must be signed in to create a note.");
+            return;
+        }
+        if (!title) {
+            setError("Title is required.");
+            return;
+        }
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ title, content }),
+        });
 
-  async function createZenNote(e:any) {
-    e.preventDefault();
-    const token = await getToken();
-    if (!token) {
-      setError("You must be signed in to create a note.");
-      return;
+        if (!res.ok) {
+            const data = await res.json().catch(() => null);
+            setError(data?.detail || `Request failed with status ${res.status}`);
+            return;
+        }
+
+        setTitle("");
+        setContent("");
+        router.push("/realShowList");
     }
-    if (!title) {
-      setError("title is required.");
-      return;
-    }
-    const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ title, content }),
-    });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      setError(data?.detail || `Request failed with status ${res.status}`);
-      return;
-    }
+    return (
+        <div className="w-full max-w-3xl mx-auto px-6 py-12">
+            <form onSubmit={createZenNote} className="flex flex-col gap-8">
+                <div className="text-sm text-[var(--zen-on-surface-variant)] tracking-wide uppercase">
+                    Write Your Thoughts
+                </div>
 
-    setTitle("");
-    setContent("");
-  }
-  return (
-    <div className="w-full flex justify-center ">
-      <div className="border-2 flex flex-col  border-green-400 px-4 py-8 px-12 w-[70%] min-h-[70vh] bg-gray-900">
-        <form onSubmit={createZenNote} className="flex flex-col gap-7">
-          {/*Top title */}
-          <div className="text-2xl">Write Your Thoughts</div>
+                {error && (
+                    <div className="text-[var(--zen-error)] text-sm">{error}</div>
+                )}
 
-          {error}
-          {/*Title section */}
+                <input
+                    placeholder="Untitled Note"
+                    className="zen-input"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                />
 
-          <div className="flex flex-col gap-4">
-            <p className="text-xl">Title</p>
-            <input
-              placeholder="Enter your title..."
-              className="p-2 bg-gray-600"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
+                <div className="min-h-[50vh]">
+                    <ZenEditor
+                        initialContent={content}
+                        onUpdate={(md) => setContent(md)}
+                        placeholder="Start writing here..."
+                    />
+                </div>
 
-          {/*Content section */}
-          <div className="flex flex-col gap-4">
-            <p className="text-xl">Content</p>
-            <textarea
-              className="p-2 bg-gray-600 h-[30vh]"
-              placeholder="Start writing here..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-            />
-          </div>
-
-          {/*Button section */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              type="submit"
-              className="bg-purple-600 text-xl py-1 px-10 flex gap-2 items-center justify-center"
-            >
-              <StickyNote />
-              <p>Save Note</p>
-            </button>
-            <button className="bg-gray-600 text-xl flex items-center px-10 p-1 justify-center">
-              <X />
-              <p>Cancel</p>
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
+                <div className="flex gap-3 justify-center pt-4">
+                    <button type="submit" className="zen-btn-primary flex items-center gap-2">
+                        <StickyNote size={16} />
+                        Save Note
+                    </button>
+                    <button
+                        type="button"
+                        className="zen-btn-ghost flex items-center gap-2"
+                        onClick={() => router.back()}
+                    >
+                        <X size={16} />
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
 }
