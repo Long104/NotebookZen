@@ -37,3 +37,7 @@ backend/.env
 # coverage
 coverage/
 
+# wrangler
+.wrangler/
+.miniflare/
+
