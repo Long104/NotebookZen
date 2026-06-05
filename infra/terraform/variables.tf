@@ -39,6 +39,12 @@ variable "supabase_db_password" {
   sensitive   = true
 }
 
+variable "supabase_service_role_key" {
+  description = "Supabase service_role key (Project Settings → API → service_role key)"
+  type        = string
+  sensitive   = true
+}
+
 variable "supabase_region" {
   description = "Supabase project region"
   type        = string

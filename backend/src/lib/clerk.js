@@ -1,31 +1,24 @@
-const { createClerkClient } = require("@clerk/backend");
-require("dotenv").config();
+import { createClerkClient } from "@clerk/backend"
+import { Webhook } from "svix"
 
-// Initialize Clerk client
-const clerk = createClerkClient({
-  secretKey: process.env.CLERK_SECRET_KEY,
-});
+// Clerk client reads CLERK_SECRET_KEY from process.env by default.
+// process.env is populated by the env-injection middleware in worker.js.
+export const clerk = createClerkClient()
 
-// Verify Clerk webhook signature
-function verifyWebhookSignature(payload, svixHeaders) {
-  try {
-    const { Webhook } = require("svix");
-    const webhook = new Webhook(process.env.CLERK_WEBHOOK_SECRET);
-
-    const evt = webhook.verify(payload, svixHeaders);
-    return evt;
-  } catch (error) {
-    console.error("Webhook verification failed:", error);
-    throw new Error("Invalid webhook signature");
-  }
+/**
+ * Verify a Clerk webhook payload using the svix Webhook class.
+ * The payload must be a raw Buffer (not a parsed JSON object).
+ */
+export function verifyWebhookSignature(payload, svixHeaders) {
+  const webhook = new Webhook(process.env.CLERK_WEBHOOK_SECRET)
+  return webhook.verify(payload, svixHeaders)
 }
 
-function sanitizeUsername(username, email) {
-  if (username && username.trim()) {
-    return username.trim();
-  }
-  const base = email.split("@")[0];
-  return base + "_" + Math.floor(Math.random() * 10000);
+/**
+ * Derive a safe display name, falling back to email prefix + random suffix.
+ */
+export function sanitizeUsername(username, email) {
+  if (username && username.trim()) return username.trim()
+  const base = email.split("@")[0]
+  return base + "_" + Math.floor(Math.random() * 10000)
 }
-
-module.exports = { clerk, verifyWebhookSignature, sanitizeUsername };

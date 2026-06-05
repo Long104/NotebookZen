@@ -1,128 +1,143 @@
-const express = require("express");
-const prisma = require("../../../prismaClient");
-const { verifyWebhookSignature, sanitizeUsername } = require("../../lib/clerk");
+import { Hono } from "hono"
+import { getSupabase } from "../../../supabaseClient.js"
+import { verifyWebhookSignature, sanitizeUsername } from "../../lib/clerk.js"
 
-const router = express.Router();
+const app = new Hono()
 
-// Clerk webhook endpoint
-router.post(
-  "/clerk",
-  express.raw({ type: "application/json" }),
-  async (req, res) => {
-    try {
-      // Get Clerk webhook headers
-      const svixId = req.headers["svix-id"];
-      const svixTimestamp = req.headers["svix-timestamp"];
-      const svixSignature = req.headers["svix-signature"];
+// ─── POST /api/webhooks/clerk ──────────────────────────────────────────────
 
-      if (!svixId || !svixTimestamp || !svixSignature) {
-        return res.status(400).json({ error: "Missing webhook headers" });
-      }
+app.post("/clerk", async (c) => {
+  try {
+    const svixId = c.req.header("svix-id")
+    const svixTimestamp = c.req.header("svix-timestamp")
+    const svixSignature = c.req.header("svix-signature")
 
-      // Verify webhook signature
-      const evt = verifyWebhookSignature(req.body, {
-        "svix-id": svixId,
-        "svix-timestamp": svixTimestamp,
-        "svix-signature": svixSignature,
-      });
-
-      const eventType = evt.type;
-      const data = evt.data;
-
-      console.log(`Received webhook: ${eventType}`);
-
-      switch (eventType) {
-        case "user.created":
-          await handleUserCreated(data);
-          break;
-        case "user.updated":
-          await handleUserUpdated(data);
-          break;
-        case "user.deleted":
-          await handleUserDeleted(data);
-          break;
-        default:
-          console.log(`Unhandled event type: ${eventType}`);
-      }
-
-      res.json({ received: true });
-    } catch (error) {
-      console.error("Webhook error:", error);
-      res.status(400).json({ error: error.message });
+    if (!svixId || !svixTimestamp || !svixSignature) {
+      return c.json({ error: "Missing webhook headers" }, 400)
     }
-  },
-);
 
-// Handle user creation (idempotent with upsert)
-async function handleUserCreated(data) {
-  const { id, username, email_addresses, primary_email_address_id } = data;
+    // Read raw body as Buffer for signature verification
+    const rawBody = await c.req.arrayBuffer()
+    const payload = Buffer.from(rawBody)
+
+    const evt = verifyWebhookSignature(payload, {
+      "svix-id": svixId,
+      "svix-timestamp": svixTimestamp,
+      "svix-signature": svixSignature,
+    })
+
+    const eventType = evt.type
+    const data = evt.data
+
+    console.log(`Received webhook: ${eventType}`)
+
+    const supabase = getSupabase()
+
+    switch (eventType) {
+      case "user.created":
+        await handleUserCreated(supabase, data)
+        break
+      case "user.updated":
+        await handleUserUpdated(supabase, data)
+        break
+      case "user.deleted":
+        await handleUserDeleted(supabase, data)
+        break
+      default:
+        console.log(`Unhandled event type: ${eventType}`)
+    }
+
+    return c.json({ received: true })
+  } catch (error) {
+    console.error("Webhook error:", error)
+    return c.json({ error: error.message }, 400)
+  }
+})
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+async function handleUserCreated(supabase, data) {
+  const { id, username, email_addresses, primary_email_address_id } = data
 
   const primaryEmail = email_addresses.find(
     (email) => email.id === primary_email_address_id,
-  );
+  )
   const emailAddress = primaryEmail
     ? primaryEmail.email_address
-    : email_addresses[0].email_address;
+    : email_addresses[0].email_address
 
-  const sanitizedUsername = sanitizeUsername(username, emailAddress);
+  const sanitizedUsername = sanitizeUsername(username, emailAddress)
 
-  const user = await prisma.user.upsert({
-    where: { clerkId: id },
-    update: {
-      username: sanitizedUsername,
-      email: emailAddress,
-    },
-    create: {
-      clerkId: id,
-      username: sanitizedUsername,
-      email: emailAddress,
-    },
-  });
+  const { data: user, error } = await supabase
+    .from('"User"')
+    .upsert(
+      {
+        clerkId: id,
+        username: sanitizedUsername,
+        email: emailAddress,
+      },
+      { onConflict: '"clerkId"' },
+    )
+    .select()
+    .single()
 
-  console.log("User upserted in Prisma:", user);
-  return user;
+  if (error) {
+    console.error("User upsert error:", error)
+    return
+  }
+
+  console.log("User upserted:", user)
+  return user
 }
 
-// Handle user update (idempotent with upsert)
-async function handleUserUpdated(data) {
-  const { id, username, email_addresses, primary_email_address_id } = data;
+async function handleUserUpdated(supabase, data) {
+  const { id, username, email_addresses, primary_email_address_id } = data
 
   const primaryEmail = email_addresses.find(
     (email) => email.id === primary_email_address_id,
-  );
+  )
   const emailAddress = primaryEmail
     ? primaryEmail.email_address
-    : email_addresses[0].email_address;
+    : email_addresses[0].email_address
 
-  const sanitizedUsername = sanitizeUsername(username, emailAddress);
+  const sanitizedUsername = sanitizeUsername(username, emailAddress)
 
-  const user = await prisma.user.upsert({
-    where: { clerkId: id },
-    update: {
-      username: sanitizedUsername,
-      email: emailAddress,
-    },
-    create: {
-      clerkId: id,
-      username: sanitizedUsername,
-      email: emailAddress,
-    },
-  });
+  const { data: user, error } = await supabase
+    .from('"User"')
+    .upsert(
+      {
+        clerkId: id,
+        username: sanitizedUsername,
+        email: emailAddress,
+      },
+      { onConflict: '"clerkId"' },
+    )
+    .select()
+    .single()
 
-  console.log("User upserted in Prisma:", user);
-  return user;
+  if (error) {
+    console.error("User upsert error:", error)
+    return
+  }
+
+  console.log("User upserted:", user)
+  return user
 }
 
-// Handle user deletion (safe with deleteMany)
-async function handleUserDeleted(data) {
-  const { id } = data;
+async function handleUserDeleted(supabase, data) {
+  const { id } = data
 
-  const result = await prisma.user.deleteMany({
-    where: { clerkId: id },
-  });
+  const { error } = await supabase
+    .from('"User"')
+    .delete()
+    .eq('"clerkId"', id)
 
-  console.log("User deleted from Prisma, count:", result.count);
-  return result;
+  if (error) {
+    console.error("User delete error:", error)
+    return
+  }
+
+  console.log("User deleted from DB")
 }
 
-module.exports = router;
+export default app

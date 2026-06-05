@@ -23,8 +23,7 @@ output "frontend_url" {
   value       = "https://${vercel_project.frontend.name}.vercel.app"
 }
 
-output "database_connection_string" {
-  description = "PostgreSQL connection string (pooler)"
-  value       = "postgresql://postgres.${supabase_project.notebookzen.id}:${var.supabase_db_password}@aws-0-${var.supabase_region}.pooler.supabase.com:6543/postgres"
-  sensitive   = true
+output "supabase_api_url" {
+  description = "Supabase REST API URL (for SUPABASE_URL env var)"
+  value       = "https://${supabase_project.notebookzen.id}.supabase.co"
 }

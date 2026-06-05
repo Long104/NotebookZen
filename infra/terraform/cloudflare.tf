@@ -1,14 +1,29 @@
-// Cloudflare Worker that hosts the Express backend.
+// Cloudflare Worker that hosts the Hono backend.
 //
-// Code is deployed via `wrangler deploy` from ./backend (which bundles
-// the worker entry + Express app). Terraform only manages the script
-// metadata and bindings so the actual binary stays out of state.
+// ─╴Deployment workflow╶─
+//    Terraform creates the Worker with a stub + all env bindings.
+//    Then `cd backend && npm run deploy` bundles and overwrites
+//    the stub with the real application code.
+//
+//    Re-running `terraform apply` will reset the code to this stub,
+//    so you must re-deploy with `npm run deploy` afterward.
 
 resource "cloudflare_workers_script" "backend" {
   name        = "notebookzen-backend"
   account_id  = var.cloudflare_account_id
 
-  compatibility_date  = "2024-09-01"
+  content = <<-EOT
+    export default {
+      async fetch(request, env) {
+        return new Response(
+          'Deploy backend code via: cd backend && npm run deploy',
+          { status: 200 }
+        );
+      }
+    }
+  EOT
+
+  compatibility_date  = "2024-12-01"
   compatibility_flags = ["nodejs_compat"]
 
   vars = {
@@ -18,8 +33,12 @@ resource "cloudflare_workers_script" "backend" {
 
   secret_text_bindings = [
     {
-      name = "DATABASE_URL"
-      text = "postgresql://postgres.${supabase_project.notebookzen.id}:${var.supabase_db_password}@aws-0-${var.supabase_region}.pooler.supabase.com:6543/postgres"
+      name = "SUPABASE_URL"
+      text = "https://${supabase_project.notebookzen.id}.supabase.co"
+    },
+    {
+      name = "SUPABASE_SERVICE_ROLE_KEY"
+      text = var.supabase_service_role_key
     },
     {
       name = "CLERK_SECRET_KEY"

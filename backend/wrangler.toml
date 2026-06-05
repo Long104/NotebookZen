@@ -1,10 +1,4 @@
 name = "notebookzen-backend"
 main = "src/worker.js"
-compatibility_date = "2024-09-01"
+compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
-
-[experimental]
-http_server = true
-
-[build]
-command = "npm install"

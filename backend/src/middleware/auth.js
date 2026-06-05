@@ -1,33 +1,31 @@
-// Correct:
-const { verifyToken } = require("@clerk/backend");
-require("dotenv").config();
+import { verifyToken } from "@clerk/backend"
 
-async function requireAuth(req, res, next) {
-    try {
-        const authHeader = req.headers.authorization;
+/**
+ * Hono middleware that requires a valid Clerk session token.
+ * On success, sets `c.get("userId")` to the Clerk user ID.
+ */
+export async function requireAuth(c, next) {
+  const authHeader = c.req.header("Authorization")
 
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({ error: "No token provided" });
-        }
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ error: "No token provided" }, 401)
+  }
 
-        const token = authHeader.split(" ")[1];
+  const token = authHeader.split(" ")[1]
 
-        // verifyToken is a standalone function, not a client method
-        const { sub: userId } = await verifyToken(token, {
-            secretKey: process.env.CLERK_SECRET_KEY,
-        });
+  try {
+    const { sub: userId } = await verifyToken(token, {
+      secretKey: process.env.CLERK_SECRET_KEY,
+    })
 
-        if (!userId) {
-            return res.status(401).json({ error: "Invalid token" });
-        }
-
-        req.auth = { userId };
-        next();
-    } catch (error) {
-        console.error("Auth error:", error);
-        return res.status(401).json({ error: "Unauthorized" });
+    if (!userId) {
+      return c.json({ error: "Invalid token" }, 401)
     }
+
+    c.set("userId", userId)
+    await next()
+  } catch (error) {
+    console.error("Auth error:", error)
+    return c.json({ error: "Unauthorized" }, 401)
+  }
 }
-
-module.exports = { requireAuth };
-
