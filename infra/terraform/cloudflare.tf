@@ -50,6 +50,18 @@ resource "cloudflare_workers_script" "backend" {
   ]
 }
 
+// CNAME record pointing notebookzen.pantorn.site → Vercel (DNS-only / grey cloud).
+// Must NOT be proxied (orange cloud) so Vercel can issue its own SSL cert.
+resource "cloudflare_record" "frontend_dns" {
+  count    = var.cloudflare_zone_id == "" ? 0 : 1
+  zone_id  = var.cloudflare_zone_id
+  name     = var.cloudflare_frontend_subdomain
+  type     = "CNAME"
+  content  = "cname.vercel-dns.com"
+  proxied  = false
+  comment  = "NotebookZen frontend → Vercel (DNS-only, Vercel issues its own cert)"
+}
+
 // Public route on workers.dev so the Vercel frontend can reach the API.
 // If you own a custom domain, add a `cloudflare_worker_route` resource
 // here and point it at this worker.

@@ -10,6 +10,12 @@ resource "vercel_project" "frontend" {
   root_directory = "frontend"
 }
 
+resource "vercel_project_domain" "frontend_custom_domain" {
+  count     = var.cloudflare_zone_id == "" ? 0 : 1
+  project_id = vercel_project.frontend.id
+  domain     = "${var.cloudflare_frontend_subdomain}.${var.cloudflare_zone_name}"
+}
+
 resource "vercel_project_environment_variable" "backend_url" {
   project_id = vercel_project.frontend.id
   key        = "NEXT_PUBLIC_BACKEND_URL"
@@ -32,5 +38,6 @@ resource "vercel_deployment" "frontend" {
   depends_on = [
     vercel_project_environment_variable.backend_url,
     vercel_project_environment_variable.clerk_publishable_key,
+    vercel_project_domain.frontend_custom_domain,
   ]
 }

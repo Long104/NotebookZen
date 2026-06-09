@@ -27,6 +27,12 @@ variable "cloudflare_backend_subdomain" {
   default     = "api"
 }
 
+variable "cloudflare_frontend_subdomain" {
+  description = "Subdomain for the Vercel frontend (custom domain), e.g. notebookzen"
+  type        = string
+  default     = "notebookzen"
+}
+
 variable "supabase_access_token" {
   description = "Supabase access token (from https://supabase.com/dashboard/account/tokens)"
   type        = string

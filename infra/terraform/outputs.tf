@@ -23,6 +23,11 @@ output "frontend_url" {
   value       = "https://${vercel_project.frontend.name}.vercel.app"
 }
 
+output "frontend_custom_domain_url" {
+  description = "Custom domain URL for the frontend"
+  value       = var.cloudflare_zone_id == "" ? "" : "https://${var.cloudflare_frontend_subdomain}.${var.cloudflare_zone_name}"
+}
+
 output "supabase_api_url" {
   description = "Supabase REST API URL (for SUPABASE_URL env var)"
   value       = "https://${supabase_project.notebookzen.id}.supabase.co"
