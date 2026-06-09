@@ -8,8 +8,6 @@ import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters"
 const require = createRequire(import.meta.url)
 const app = new Hono()
 
-const AI_PROVIDER = process.env.AI_PROVIDER || "openrouter"
-
 const SYSTEM_PROMPT = `You are a helpful AI assistant for NotebookZen, a note-taking app.
 You answer questions based ONLY on the user's notes provided below.
 
@@ -28,22 +26,54 @@ QUESTION: {question}
 
 ANSWER:`
 
-function createModel() {
-  switch (AI_PROVIDER) {
+// ─── Fetch user AI settings from DB ──────────────────────────────────────
+
+async function getUserAISettings(supabase, userId) {
+  const { data: settings } = await supabase
+    .from('"Setting"')
+    .select("key, value")
+    .eq('"userId"', userId)
+
+  const map = {}
+  for (const row of settings || []) {
+    map[row.key] = row.value
+  }
+
+  return {
+    ai_provider: map.ai_provider || "openrouter",
+    openrouter_api_key: map.openrouter_api_key || "",
+    openrouter_model: map.openrouter_model || "google/gemini-2.0-flash-exp:free",
+    google_api_key: map.google_api_key || "",
+    google_model: map.google_model || "gemini-2.0-flash",
+  }
+}
+
+// ─── Create model from per-user settings ──────────────────────────────────
+
+function createModel(userSettings) {
+  const provider = userSettings.ai_provider
+
+  switch (provider) {
     case "google": {
+      if (!userSettings.google_api_key) {
+        throw new Error("Google API key not configured. Please set it in Settings.")
+      }
       const { ChatGoogleGenerativeAI } = require("@langchain/google-genai")
       return new ChatGoogleGenerativeAI({
-        model: process.env.GOOGLE_MODEL || "gemini-2.0-flash",
-        apiKey: process.env.GOOGLE_API_KEY,
+        model: userSettings.google_model,
+        apiKey: userSettings.google_api_key,
         temperature: 0.3,
         maxOutputTokens: 1024,
       })
     }
     case "openrouter":
-    default:
+    default: {
+      if (!userSettings.openrouter_api_key) {
+        throw new Error("OpenRouter API key not configured. Please set it in Settings.")
+      }
       return new ChatOpenAI({
-        model: process.env.OPENROUTER_MODEL,
-        apiKey: process.env.OPENROUTER_API_KEY,
+        model: userSettings.openrouter_model,
+        apiKey: userSettings.openrouter_api_key,
         temperature: 0.3,
         maxTokens: 1024,
         configuration: {
@@ -57,10 +87,11 @@ function createModel() {
           reasoning: { enabled: false },
         },
       })
+    }
   }
 }
 
-// ─── POST /api/chat ────────────────────────────────────────────────────────
+// ─── POST /api/chat ──────────────────────────────────────────────────────
 
 app.post("/chat", requireAuth, async (c) => {
   try {
@@ -83,6 +114,9 @@ app.post("/chat", requireAuth, async (c) => {
     if (!user) {
       return c.json({ error: "User not found" }, 404)
     }
+
+    // ── BYOK: Load per-user AI settings ──
+    const userSettings = await getUserAISettings(supabase, user.id)
 
     // Fetch notes for the user
     const { data: notes } = await supabase
@@ -114,7 +148,8 @@ app.post("/chat", requireAuth, async (c) => {
     const chunks = await splitter.splitText(formattedNotes)
     const relevantContext = chunks.slice(0, 3).join("\n\n---\n\n")
 
-    const model = createModel()
+    // ── BYOK: Create model with user's own key ──
+    const model = createModel(userSettings)
 
     const prompt = SYSTEM_PROMPT.replace("{notes}", relevantContext).replace(
       "{question}",
@@ -138,6 +173,15 @@ app.post("/chat", requireAuth, async (c) => {
     })
   } catch (error) {
     console.error("Chat error:", error)
+
+    // Surface BYOK config errors to the user
+    if (
+      error.message?.includes("not configured") ||
+      error.message?.includes("API key")
+    ) {
+      return c.json({ error: error.message }, 422)
+    }
+
     return c.json({ error: "Failed to generate response" }, 500)
   }
 })

@@ -91,35 +91,3 @@ variable "clerk_webhook_secret" {
   type        = string
   sensitive   = true
 }
-
-variable "ai_provider" {
-  description = "AI provider: openrouter or google"
-  type        = string
-  default     = "openrouter"
-}
-
-variable "openrouter_api_key" {
-  description = "OpenRouter API key"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "openrouter_model" {
-  description = "OpenRouter model name"
-  type        = string
-  default     = "google/gemini-2.0-flash-exp:free"
-}
-
-variable "google_api_key" {
-  description = "Google AI API key"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "google_model" {
-  description = "Google AI model name"
-  type        = string
-  default     = "gemini-2.0-flash"
-}

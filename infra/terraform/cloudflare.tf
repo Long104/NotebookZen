@@ -28,7 +28,6 @@ resource "cloudflare_workers_script" "backend" {
 
   vars = {
     FRONTEND_URL = "https://${vercel_project.frontend.name}.vercel.app"
-    AI_PROVIDER  = var.ai_provider
   }
 
   secret_text_bindings = [
@@ -47,22 +46,6 @@ resource "cloudflare_workers_script" "backend" {
     {
       name = "CLERK_WEBHOOK_SECRET"
       text = var.clerk_webhook_secret
-    },
-    {
-      name = "OPENROUTER_API_KEY"
-      text = var.openrouter_api_key
-    },
-    {
-      name = "OPENROUTER_MODEL"
-      text = var.openrouter_model
-    },
-    {
-      name = "GOOGLE_API_KEY"
-      text = var.google_api_key
-    },
-    {
-      name = "GOOGLE_MODEL"
-      text = var.google_model
     },
   ]
 }

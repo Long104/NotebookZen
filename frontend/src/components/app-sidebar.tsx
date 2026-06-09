@@ -13,7 +13,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Home, PenLine, List, MessageSquare } from "lucide-react";
+import { Home, PenLine, List, MessageSquare, Settings } from "lucide-react";
 import { useChatPanel } from "@/context/ChatPanelContext";
 
 export function AppSidebar() {
@@ -85,6 +85,15 @@ export function AppSidebar() {
                                 >
                                     <MessageSquare size={16} />
                                     <span>AI Chat</span>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild tooltip="Settings">
+                                    <Link href="/settings">
+                                        <Settings size={16} />
+                                        <span>Settings</span>
+                                    </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>
                         </SidebarMenu>

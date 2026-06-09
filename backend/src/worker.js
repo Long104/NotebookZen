@@ -7,6 +7,7 @@ import { cors } from "hono/cors"
 import { getSupabase } from "../supabaseClient.js"
 import { requireAuth } from "./middleware/auth.js"
 import chatRoutes from "./routes/chat.js"
+import settingsRoutes from "./routes/settings.js"
 import webhookRoutes from "./routes/webhooks/clerk.js"
 
 const app = new Hono()
@@ -40,6 +41,7 @@ app.route("/api/webhooks", webhookRoutes)
 // ─── Protected route guards ────────────────────────────────────────────────
 app.use("/notes/*", requireAuth)
 app.use("/api/chat", requireAuth)
+app.use("/api/settings/*", requireAuth)
 
 // ─── Notes CRUD ────────────────────────────────────────────────────────────
 
@@ -142,8 +144,9 @@ app.get("/notesCount/:id", async (c) => {
   return c.json(count ?? 0)
 })
 
-// ─── AI Chat ───────────────────────────────────────────────────────────────
+// ─── AI Chat & Settings ────────────────────────────────────────────────────
 app.route("/api", chatRoutes)
+app.route("/api/settings", settingsRoutes)
 
 // ─── Export ────────────────────────────────────────────────────────────────
 export default app
