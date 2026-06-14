@@ -20,14 +20,14 @@ resource "vercel_project_environment_variable" "backend_url" {
   project_id = vercel_project.frontend.id
   key        = "NEXT_PUBLIC_BACKEND_URL"
   value      = "https://${cloudflare_workers_script.backend.subdomain}.workers.dev"
-  environment = ["production", "preview", "development"]
+  environment = ["production"]
 }
 
 resource "vercel_project_environment_variable" "clerk_publishable_key" {
   project_id = vercel_project.frontend.id
   key        = "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
   value      = var.clerk_publishable_key
-  environment = ["production", "preview", "development"]
+  environment = ["production"]
 }
 
 resource "vercel_deployment" "frontend" {
