@@ -12,6 +12,8 @@ resource "cloudflare_workers_script" "backend" {
   name        = "notebookzen-backend"
   account_id  = var.cloudflare_account_id
 
+  module      = true
+
   content = <<-EOT
     export default {
       async fetch(request, env) {
@@ -26,28 +28,20 @@ resource "cloudflare_workers_script" "backend" {
   compatibility_date  = "2024-12-01"
   compatibility_flags = ["nodejs_compat"]
 
-  vars = {
-    FRONTEND_URL = "https://${vercel_project.frontend.name}.vercel.app"
+  plain_text_binding {
+    name = "FRONTEND_URL"
+    text = "https://${vercel_project.frontend.name}.vercel.app"
   }
 
-  secret_text_bindings = [
-    {
-      name = "SUPABASE_URL"
-      text = "https://${supabase_project.notebookzen.id}.supabase.co"
-    },
-    {
-      name = "SUPABASE_SERVICE_ROLE_KEY"
-      text = var.supabase_service_role_key
-    },
-    {
-      name = "CLERK_SECRET_KEY"
-      text = var.clerk_secret_key
-    },
-    {
-      name = "CLERK_WEBHOOK_SECRET"
-      text = var.clerk_webhook_secret
-    },
-  ]
+  secret_text_binding {
+    name = "CLERK_SECRET_KEY"
+    text = var.clerk_secret_key
+  }
+
+  secret_text_binding {
+    name = "CLERK_WEBHOOK_SECRET"
+    text = var.clerk_webhook_secret
+  }
 }
 
 // CNAME record pointing notebookzen.pantorn.site → Vercel (DNS-only / grey cloud).
@@ -65,7 +59,7 @@ resource "cloudflare_record" "frontend_dns" {
 // Public route on workers.dev so the Vercel frontend can reach the API.
 // If you own a custom domain, add a `cloudflare_worker_route` resource
 // here and point it at this worker.
-resource "cloudflare_worker_route" "backend_default" {
+resource "cloudflare_workers_route" "backend_default" {
   count    = var.cloudflare_zone_id == "" ? 0 : 1
   zone_id  = var.cloudflare_zone_id
   pattern  = "${var.cloudflare_backend_subdomain}.${var.cloudflare_zone_name}/*"
