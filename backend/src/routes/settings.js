@@ -1,5 +1,7 @@
 import { Hono } from "hono"
-import { getSupabase } from "../../supabaseClient.js"
+import { getDb } from "../../db/db.js"
+import { users, settings as settingsTable } from "../../db/schema.js"
+import { eq, and, inArray } from "drizzle-orm"
 import { requireAuth } from "../middleware/auth.js"
 
 const app = new Hono()
@@ -24,23 +26,27 @@ function maskValue(value) {
 app.get("/", requireAuth, async (c) => {
   try {
     const clerkId = c.get("userId")
-    const supabase = getSupabase()
+    const db = getDb(c.env.HYPERDRIVE)
 
-    const { data: user } = await supabase
-      .from('"User"')
-      .select("id")
-      .eq('"clerkId"', clerkId)
-      .single()
+    const [user] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1)
 
     if (!user) {
       return c.json({ error: "User not found" }, 404)
     }
 
-    const { data: settings } = await supabase
-      .from('"Setting"')
-      .select("key, value")
-      .eq('"userId"', user.id)
-      .in("key", AI_SETTING_KEYS)
+    const rows = await db
+      .select({ key: settingsTable.key, value: settingsTable.value })
+      .from(settingsTable)
+      .where(
+        and(
+          eq(settingsTable.userId, user.id),
+          inArray(settingsTable.key, AI_SETTING_KEYS),
+        ),
+      )
 
     // Build response with defaults for missing keys
     const defaults = {
@@ -52,7 +58,7 @@ app.get("/", requireAuth, async (c) => {
     }
 
     const result = { ...defaults }
-    for (const row of settings || []) {
+    for (const row of rows) {
       // Mask sensitive keys for display
       if (row.key.endsWith("_api_key")) {
         result[row.key] = maskValue(row.value)
@@ -82,13 +88,13 @@ app.post("/", requireAuth, async (c) => {
       return c.json({ error: "settings object is required" }, 400)
     }
 
-    const supabase = getSupabase()
+    const db = getDb(c.env.HYPERDRIVE)
 
-    const { data: user } = await supabase
-      .from('"User"')
-      .select("id")
-      .eq('"clerkId"', clerkId)
-      .single()
+    const [user] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1)
 
     if (!user) {
       return c.json({ error: "User not found" }, 404)
@@ -110,17 +116,13 @@ app.post("/", requireAuth, async (c) => {
         continue
       }
 
-      const { error } = await supabase
-        .from('"Setting"')
-        .upsert(
-          { userId: user.id, key, value: String(value) },
-          { onConflict: '"userId",key' },
-        )
-
-      if (error) {
-        console.error(`Upsert error for ${key}:`, error)
-        return c.json({ error: `Failed to save ${key}` }, 500)
-      }
+      await db
+        .insert(settingsTable)
+        .values({ userId: user.id, key, value: String(value) })
+        .onConflictDoUpdate({
+          target: [settingsTable.userId, settingsTable.key],
+          set: { value: String(value) },
+        })
     }
 
     return c.json({ message: "Settings saved successfully" })

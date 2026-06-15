@@ -1,5 +1,7 @@
 import { Hono } from "hono"
-import { getSupabase } from "../../../supabaseClient.js"
+import { getDb } from "../../../db/db.js"
+import { users } from "../../../db/schema.js"
+import { eq } from "drizzle-orm"
 import { verifyWebhookSignature, sanitizeUsername } from "../../lib/clerk.js"
 
 const app = new Hono()
@@ -31,17 +33,17 @@ app.post("/clerk", async (c) => {
 
     console.log(`Received webhook: ${eventType}`)
 
-    const supabase = getSupabase()
+    const db = getDb(c.env.HYPERDRIVE)
 
     switch (eventType) {
       case "user.created":
-        await handleUserCreated(supabase, data)
+        await handleUserCreated(db, data)
         break
       case "user.updated":
-        await handleUserUpdated(supabase, data)
+        await handleUserUpdated(db, data)
         break
       case "user.deleted":
-        await handleUserDeleted(supabase, data)
+        await handleUserDeleted(db, data)
         break
       default:
         console.log(`Unhandled event type: ${eventType}`)
@@ -56,7 +58,7 @@ app.post("/clerk", async (c) => {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-async function handleUserCreated(supabase, data) {
+async function handleUserCreated(db, data) {
   const { id, username, email_addresses, primary_email_address_id } = data
 
   const primaryEmail = email_addresses.find(
@@ -68,29 +70,24 @@ async function handleUserCreated(supabase, data) {
 
   const sanitizedUsername = sanitizeUsername(username, emailAddress)
 
-  const { data: user, error } = await supabase
-    .from('"User"')
-    .upsert(
-      {
-        clerkId: id,
-        username: sanitizedUsername,
-        email: emailAddress,
-      },
-      { onConflict: '"clerkId"' },
-    )
-    .select()
-    .single()
-
-  if (error) {
-    console.error("User upsert error:", error)
-    return
-  }
+  const [user] = await db
+    .insert(users)
+    .values({
+      clerkId: id,
+      username: sanitizedUsername,
+      email: emailAddress,
+    })
+    .onConflictDoUpdate({
+      target: users.clerkId,
+      set: { username: sanitizedUsername, email: emailAddress },
+    })
+    .returning()
 
   console.log("User upserted:", user)
   return user
 }
 
-async function handleUserUpdated(supabase, data) {
+async function handleUserUpdated(db, data) {
   const { id, username, email_addresses, primary_email_address_id } = data
 
   const primaryEmail = email_addresses.find(
@@ -102,40 +99,27 @@ async function handleUserUpdated(supabase, data) {
 
   const sanitizedUsername = sanitizeUsername(username, emailAddress)
 
-  const { data: user, error } = await supabase
-    .from('"User"')
-    .upsert(
-      {
-        clerkId: id,
-        username: sanitizedUsername,
-        email: emailAddress,
-      },
-      { onConflict: '"clerkId"' },
-    )
-    .select()
-    .single()
-
-  if (error) {
-    console.error("User upsert error:", error)
-    return
-  }
+  const [user] = await db
+    .insert(users)
+    .values({
+      clerkId: id,
+      username: sanitizedUsername,
+      email: emailAddress,
+    })
+    .onConflictDoUpdate({
+      target: users.clerkId,
+      set: { username: sanitizedUsername, email: emailAddress },
+    })
+    .returning()
 
   console.log("User upserted:", user)
   return user
 }
 
-async function handleUserDeleted(supabase, data) {
+async function handleUserDeleted(db, data) {
   const { id } = data
 
-  const { error } = await supabase
-    .from('"User"')
-    .delete()
-    .eq('"clerkId"', id)
-
-  if (error) {
-    console.error("User delete error:", error)
-    return
-  }
+  await db.delete(users).where(eq(users.clerkId, id))
 
   console.log("User deleted from DB")
 }

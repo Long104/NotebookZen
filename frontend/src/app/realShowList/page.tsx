@@ -35,10 +35,6 @@ function RealShowListContent() {
         }
     }, [isLoaded, isSignedIn, router]);
 
-    if (!isLoaded || !isSignedIn) {
-        return null;
-    }
-
     useEffect(() => {
         const fetchData = async () => {
             const token = await getToken();
@@ -69,6 +65,10 @@ function RealShowListContent() {
         };
         fetchData();
     }, [getToken, searchParams]);
+
+    if (!isLoaded || !isSignedIn) {
+        return null;
+    }
 
     function handleSelectedNote(note: Note) {
         setSelectedNote(note);
