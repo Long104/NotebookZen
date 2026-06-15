@@ -4,7 +4,9 @@
 
 import { Hono } from "hono"
 import { cors } from "hono/cors"
-import { getSupabase } from "../supabaseClient.js"
+import { getDb } from "../db/db.js"
+import { users, notes } from "../db/schema.js"
+import { eq, desc, sql } from "drizzle-orm"
 import { requireAuth } from "./middleware/auth.js"
 import chatRoutes from "./routes/chat.js"
 import settingsRoutes from "./routes/settings.js"
@@ -14,7 +16,7 @@ const app = new Hono()
 
 // ─── Global middleware ─────────────────────────────────────────────────────
 // Inject Worker bindings (including secret_text) into process.env so
-// @supabase/supabase-js, @clerk/backend, @langchain/* can read them.
+// @clerk/backend, @langchain/* can read them.
 app.use("*", async (c, next) => {
   for (const [key, value] of Object.entries(c.env)) {
     if (typeof value === "string") process.env[key] = value
@@ -22,14 +24,18 @@ app.use("*", async (c, next) => {
   await next()
 })
 
-// CORS – allow only the frontend origin
+// CORS – allow both Vercel and custom domain origins
+const ALLOWED_ORIGINS = [
+  "https://notebookzen.pantorn.site",
+  "https://notebookzen.vercel.app",
+  "http://localhost:3000",
+]
 app.use(
   "*",
   cors({
     origin: (origin) => {
-      const allowed = process.env.FRONTEND_URL || "*"
-      if (allowed === "*") return "*"
-      return origin === allowed || origin === undefined ? allowed : null
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) return origin || ALLOWED_ORIGINS[0]
+      return null
     },
   }),
 )
@@ -47,25 +53,24 @@ app.use("/api/settings/*", requireAuth)
 
 // GET /notes  – list all notes for the authenticated user
 app.get("/notes", async (c) => {
-  const supabase = getSupabase()
+  const db = getDb(c.env.HYPERDRIVE)
   const clerkId = c.get("userId")
 
-  // Resolve clerkId → userId, then fetch notes
-  const { data: user } = await supabase
-    .from('"User"')
-    .select("id")
-    .eq('"clerkId"', clerkId)
-    .single()
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1)
 
   if (!user) return c.json([])
 
-  const { data: notes } = await supabase
-    .from('"Note"')
-    .select("*")
-    .eq('"userId"', user.id)
-    .order('"createdAt"', { ascending: false })
+  const result = await db
+    .select()
+    .from(notes)
+    .where(eq(notes.userId, user.id))
+    .orderBy(desc(notes.createdAt))
 
-  return c.json(notes || [])
+  return c.json(result)
 })
 
 // GET /notes/:id  – single note
@@ -73,75 +78,73 @@ app.get("/notes/:id", async (c) => {
   const id = Number(c.req.param("id"))
   if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
 
-  const supabase = getSupabase()
-  const { data: note } = await supabase
-    .from('"Note"')
-    .select("*")
-    .eq('"id"', id)
-    .single()
+  const db = getDb(c.env.HYPERDRIVE)
+  const [note] = await db
+    .select()
+    .from(notes)
+    .where(eq(notes.id, id))
+    .limit(1)
 
   return c.json(note || {})
 })
 
 // POST /notes  – create note for the authenticated user
 app.post("/notes", async (c) => {
-  const supabase = getSupabase()
+  const db = getDb(c.env.HYPERDRIVE)
   const clerkId = c.get("userId")
   const { title, content } = await c.req.json()
 
-  const { data: user } = await supabase
-    .from('"User"')
-    .select("id")
-    .eq('"clerkId"', clerkId)
-    .single()
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1)
 
   if (!user) return c.json({ error: "User not found" }, 404)
 
-  const { data: newNote } = await supabase
-    .from('"Note"')
-    .insert({ title, content, userId: user.id })
-    .select()
-    .single()
+  const [newNote] = await db
+    .insert(notes)
+    .values({ title, content, userId: user.id })
+    .returning()
 
   return c.json({ message: "Create Success!", data: newNote })
 })
 
 // PUT /notes  – update note
 app.put("/notes", async (c) => {
-  const supabase = getSupabase()
+  const db = getDb(c.env.HYPERDRIVE)
   const { id, title, content } = await c.req.json()
 
-  const { data: updatedNote } = await supabase
-    .from('"Note"')
-    .update({ title, content })
-    .eq('"id"', id)
-    .select()
-    .single()
+  const [updatedNote] = await db
+    .update(notes)
+    .set({ title, content })
+    .where(eq(notes.id, id))
+    .returning()
 
   return c.json({ message: "Update success", data: updatedNote })
 })
 
 // DELETE /notes  – delete note
 app.delete("/notes", async (c) => {
-  const supabase = getSupabase()
+  const db = getDb(c.env.HYPERDRIVE)
   const { id } = await c.req.json()
 
-  await supabase.from('"Note"').delete().eq('"id"', id)
+  await db.delete(notes).where(eq(notes.id, id))
 
   return c.json({ message: "delete data", data: { id } })
 })
 
 // GET /notesCount/:id  – count notes for a user (by user's id, not clerkId)
 app.get("/notesCount/:id", async (c) => {
-  const supabase = getSupabase()
+  const db = getDb(c.env.HYPERDRIVE)
   const userId = Number(c.req.param("id"))
 
-  const { count } = await supabase
-    .from('"Note"')
-    .select("*", { count: "exact", head: true })
-    .eq('"userId"', userId)
+  const [result] = await db
+    .select({ count: sql`count(*)::int` })
+    .from(notes)
+    .where(eq(notes.userId, userId))
 
-  return c.json(count ?? 0)
+  return c.json(result?.count ?? 0)
 })
 
 // ─── AI Chat & Settings ────────────────────────────────────────────────────
