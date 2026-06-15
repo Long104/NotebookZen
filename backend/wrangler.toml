@@ -12,8 +12,11 @@ FRONTEND_URL = "https://notebookzen.pantorn.site"
 binding = "HYPERDRIVE"
 id = "8cec8ad2d9a5445d9bd8362fbbf5e090"
 
-# Secrets (set once via CLI, not stored here):
-#   wrangler secret put CLERK_SECRET_KEY
-#   wrangler secret put CLERK_WEBHOOK_SECRET
-#
+# Required secrets — deploy FAILS if any are missing.
+# Set values via `wrangler secret put <KEY>` (NEVER in this file, NEVER in Terraform).
 # Wrangler preserves secrets across deploys — they won't be wiped.
+[secrets]
+required = [
+  "CLERK_SECRET_KEY",
+  "CLERK_WEBHOOK_SECRET",
+]

@@ -1,0 +1,67 @@
+# .gitleaks.toml — NotebookZen secret scanner config
+# Blocks commits containing secrets before they leave your machine.
+# Born from the 2026-06-15 Clerk key leak post-mortem.
+
+title = "notebookzen gitleaks config"
+
+[extend]
+useDefault = true  # keeps all built-in rules (AWS, Stripe, GitHub, etc.)
+
+# -- Clerk secret keys (sk_test_ / sk_live_) ---------------------
+[[rules]]
+id = "clerk-secret-key"
+description = "Clerk Secret Key"
+regex = '''sk_(test|live)_[A-Za-z0-9]{20,}'''
+tags = ["key", "clerk"]
+
+# -- Supabase service role key -----------------------------------
+[[rules]]
+id = "supabase-service-role-key"
+description = "Supabase Service Role Key"
+regex = '''eyJ[a-zA-Z0-9_-]{30,}'''
+keywords = ["supabase", "service_role", "SUPABASE_SERVICE_ROLE_KEY"]
+tags = ["key", "supabase"]
+
+# -- Cloudflare API tokens ---------------------------------------
+[[rules]]
+id = "cloudflare-api-token"
+description = "Cloudflare API Token"
+regex = '''[A-Za-z0-9_-]{40,}'''
+keywords = ["cloudflare", "cf_api_token", "CLOUDFLARE_API_TOKEN"]
+tags = ["key", "cloudflare"]
+
+# -- Vercel tokens ------------------------------------------------
+[[rules]]
+id = "vercel-token"
+description = "Vercel Token"
+regex = '''[A-Za-z0-9]{24,}'''
+keywords = ["vercel", "VERCEL_TOKEN", "VERCEL_API_TOKEN"]
+tags = ["key", "vercel"]
+
+# -- Terraform state/plan files (ALWAYS carry plaintext secrets) --
+[[rules]]
+id = "terraform-state-secret"
+description = "Secret value in Terraform state/plan file"
+path = '''\.(tfstate|tfplan|tfvars)$'''
+regex = '''(?i)(password|secret|token|api_key|private_key)\s*[=:]\s*["']?[^\s"']{8,}'''
+tags = ["terraform", "state"]
+
+# -- Allowlist (false positives) ---------------------------------
+[allowlist]
+paths = [
+  '''node_modules/.*''',
+  '''package-lock\.json''',
+  '''bun\.lock''',
+  '''\.gitignore''',
+  '''\.env\.example''',
+  '''\.env\.template''',
+  '''\.tfvars\.example''',
+  '''\.dev\.vars\.example''',
+  '''\.(md|txt)$''',
+]
+regexes = [
+  '''sk_test_xxxxxxxx''',
+  '''sk_test_\.\.\.''',
+  '''whsec_xxxxxxxx''',
+  '''EXAMPLE|PLACEHOLDER|YOUR_.*_HERE|xxxx''',
+]

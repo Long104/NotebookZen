@@ -42,3 +42,20 @@ coverage/
 .wrangler/
 .miniflare/
 
+# cloudflare local dev secrets
+.dev.vars
+.dev.vars.*
+backend/.dev.vars
+
+# terraform — plaintext secrets live here, NEVER commit
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+infra/terraform/.terraform/
+infra/terraform/*.tfstate*
+infra/terraform/*.tfplan*
+

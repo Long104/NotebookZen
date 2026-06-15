@@ -1,0 +1,9 @@
+#!/bin/sh
+# Pre-commit hook — runs on every `git commit`
+# Blocks commit if secrets are detected in staged files
+
+# 1. Secret scan (blocks if gitleaks finds anything)
+gitleaks protect --staged --redact --config .gitleaks.toml --verbose
+
+# Note: lint-staged can be added here once eslint/prettier are configured
+# npx lint-staged
