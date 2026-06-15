@@ -23,6 +23,12 @@ function RealShowListContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
+    const [noteList, setNoteList] = useState<Note[]>([]);
+    const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editTitle, setEditTitle] = useState("");
+    const [editContent, setEditContent] = useState("");
+
     useEffect(() => {
         if (isLoaded && !isSignedIn) {
             router.push("/");
@@ -32,12 +38,6 @@ function RealShowListContent() {
     if (!isLoaded || !isSignedIn) {
         return null;
     }
-
-    const [noteList, setNoteList] = useState<Note[]>([]);
-    const [selectedNote, setSelectedNote] = useState<Note | null>(null);
-    const [isEditing, setIsEditing] = useState(false);
-    const [editTitle, setEditTitle] = useState("");
-    const [editContent, setEditContent] = useState("");
 
     useEffect(() => {
         const fetchData = async () => {
