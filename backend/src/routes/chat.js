@@ -1,11 +1,11 @@
 import { Hono } from "hono"
-import { createRequire } from "node:module"
-import { getSupabase } from "../../supabaseClient.js"
+import { getDb } from "../../db/db.js"
+import { users, notes, settings as settingsTable } from "../../db/schema.js"
+import { eq, desc } from "drizzle-orm"
 import { requireAuth } from "../middleware/auth.js"
 import { ChatOpenAI } from "@langchain/openai"
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters"
-
-const require = createRequire(import.meta.url)
 const app = new Hono()
 
 const SYSTEM_PROMPT = `You are a helpful AI assistant for NotebookZen, a note-taking app.
@@ -28,14 +28,14 @@ ANSWER:`
 
 // ─── Fetch user AI settings from DB ──────────────────────────────────────
 
-async function getUserAISettings(supabase, userId) {
-  const { data: settings } = await supabase
-    .from('"Setting"')
-    .select("key, value")
-    .eq('"userId"', userId)
+async function getUserAISettings(db, userId) {
+  const rows = await db
+    .select({ key: settingsTable.key, value: settingsTable.value })
+    .from(settingsTable)
+    .where(eq(settingsTable.userId, userId))
 
   const map = {}
-  for (const row of settings || []) {
+  for (const row of rows) {
     map[row.key] = row.value
   }
 
@@ -58,8 +58,7 @@ function createModel(userSettings) {
       if (!userSettings.google_api_key) {
         throw new Error("Google API key not configured. Please set it in Settings.")
       }
-      const { ChatGoogleGenerativeAI } = require("@langchain/google-genai")
-      return new ChatGoogleGenerativeAI({
+      const model = new ChatGoogleGenerativeAI({
         model: userSettings.google_model,
         apiKey: userSettings.google_api_key,
         temperature: 0.3,
@@ -102,30 +101,30 @@ app.post("/chat", requireAuth, async (c) => {
       return c.json({ error: "Question is required" }, 400)
     }
 
-    const supabase = getSupabase()
+    const db = getDb(c.env.HYPERDRIVE)
 
     // Resolve clerkId → user
-    const { data: user } = await supabase
-      .from('"User"')
-      .select("id")
-      .eq('"clerkId"', clerkId)
-      .single()
+    const [user] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.clerkId, clerkId))
+      .limit(1)
 
     if (!user) {
       return c.json({ error: "User not found" }, 404)
     }
 
     // ── BYOK: Load per-user AI settings ──
-    const userSettings = await getUserAISettings(supabase, user.id)
+    const userSettings = await getUserAISettings(db, user.id)
 
     // Fetch notes for the user
-    const { data: notes } = await supabase
-      .from('"Note"')
-      .select("*")
-      .eq('"userId"', user.id)
-      .order('"createdAt"', { ascending: false })
+    const noteRows = await db
+      .select()
+      .from(notes)
+      .where(eq(notes.userId, user.id))
+      .orderBy(desc(notes.createdAt))
 
-    if (!notes || notes.length === 0) {
+    if (!noteRows || noteRows.length === 0) {
       return c.json({
         answer:
           "You don't have any notes yet. Create some notes and I'll be able to help you find information in them!",
@@ -133,7 +132,7 @@ app.post("/chat", requireAuth, async (c) => {
       })
     }
 
-    const formattedNotes = notes
+    const formattedNotes = noteRows
       .map((note) => {
         const content = note.content || "(empty note)"
         return `[Note "${note.title}" (ID: ${note.id})]:\n${content}`
@@ -161,7 +160,7 @@ app.post("/chat", requireAuth, async (c) => {
       { role: "user", content: prompt },
     ])
 
-    const sources = notes.map((note) => ({
+    const sources = noteRows.map((note) => ({
       id: note.id,
       title: note.title,
       createdAt: note.createdAt,
