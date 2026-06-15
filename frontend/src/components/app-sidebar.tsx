@@ -50,7 +50,7 @@ export function AppSidebar() {
                         <SidebarMenu>
                             <SidebarMenuItem>
                                 <SidebarMenuButton asChild tooltip="Home">
-                                    <Link href="/">
+                                    <Link href="/dashboard">
                                         <Home size={16} />
                                         <span>Home</span>
                                     </Link>

@@ -55,7 +55,7 @@ export default function MenuBody() {
                         description="Store and manage your ideas"
                     />
                 </Link>
-                <Link href="/create">
+                <Link href="/graph">
                     <Card
                         icon={<Share2 size={24} />}
                         title="Mapping"
