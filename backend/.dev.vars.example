@@ -1,0 +1,3 @@
+FRONTEND_URL = "http://localhost:3000"
+CLERK_SECRET_KEY = "your_clerk_secret_key"
+CLERK_WEBHOOK_SECRET = "your_clerk_webhook_secret"

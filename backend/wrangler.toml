@@ -2,3 +2,13 @@ name = "notebookzen-backend"
 main = "src/worker.js"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
+
+# Non-secret env vars (safe to commit)
+[vars]
+FRONTEND_URL = "https://notebookzen.pantorn.site"
+
+# Secrets (set once via CLI, not stored here):
+#   wrangler secret put CLERK_SECRET_KEY
+#   wrangler secret put CLERK_WEBHOOK_SECRET
+#
+# Wrangler preserves secrets across deploys — they won't be wiped.
