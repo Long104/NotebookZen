@@ -13,7 +13,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Home, PenLine, List, MessageSquare, Settings } from "lucide-react";
+import { Home, PenLine, List, MessageSquare, Settings, Share2 } from "lucide-react";
 import { useChatPanel } from "@/context/ChatPanelContext";
 
 export function AppSidebar() {
@@ -74,6 +74,15 @@ export function AppSidebar() {
                                     <Link href="/realShowList">
                                         <List size={16} />
                                         <span>My Notes</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild tooltip="Note Graph">
+                                    <Link href="/graph">
+                                        <Share2 size={16} />
+                                        <span>Note Graph</span>
                                     </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>

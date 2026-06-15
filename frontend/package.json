@@ -23,7 +23,11 @@
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-force-graph-2d": "^1.29.1",
+    "react-force-graph-3d": "^1.29.1",
     "tailwind-merge": "^3.5.0",
+    "three": "^0.184.0",
+    "three-spritetext": "^1.10.0",
     "tiptap-markdown": "^0.9.0"
   },
   "devDependencies": {
@@ -31,6 +35,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.184.1",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
