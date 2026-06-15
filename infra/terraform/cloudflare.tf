@@ -14,6 +14,13 @@ resource "cloudflare_workers_script" "backend" {
 
   module      = true
 
+  // After initial creation, Wrangler deploys real code.
+  // Tell Terraform to stop managing `content` so it won't
+  // overwrite the Hono bundle with this stub on every apply.
+  lifecycle {
+    ignore_changes = [content]
+  }
+
   content = <<-EOT
     export default {
       async fetch(request, env) {
