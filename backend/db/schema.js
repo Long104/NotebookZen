@@ -5,7 +5,19 @@ import {
   integer,
   timestamp,
   unique,
+  customType,
 } from "drizzle-orm/pg-core"
+
+/**
+ * pgvector column type — stores a 768-dimensional float vector.
+ * Dimension matches @cf/baai/bge-base-en-v1.5 (Workers AI embedding model).
+ * Requires: CREATE EXTENSION IF NOT EXISTS vector;
+ */
+const vector = customType({
+  dataType() {
+    return "vector(768)"
+  },
+})
 
 export const users = pgTable("User", {
   id: serial("id").primaryKey(),
@@ -22,6 +34,7 @@ export const notes = pgTable("Note", {
     .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
   title: text("title").notNull(),
   content: text("content"),
+  embedding: vector("embedding"),
   createdAt: timestamp("createdAt", { precision: 3 }).defaultNow().notNull(),
 })
 

@@ -9,6 +9,7 @@ import { users, notes, noteLinks } from "../db/schema.js"
 import { eq, desc, sql, inArray } from "drizzle-orm"
 import { requireAuth } from "./middleware/auth.js"
 import { syncNoteLinks } from "./lib/wikilinks.js"
+import { embedNote } from "./lib/embeddings.js"
 import chatRoutes from "./routes/chat.js"
 import settingsRoutes from "./routes/settings.js"
 import webhookRoutes from "./routes/webhooks/clerk.js"
@@ -191,6 +192,17 @@ app.post("/notes", async (c) => {
   // Resolve [[wikilinks]] into note_links table
   await syncNoteLinks(db, newNote.id, content || "", user.id)
 
+  // Generate + store embedding (non-fatal if Workers AI is unavailable)
+  try {
+    const vector = await embedNote(c.env.AI, title, content || "")
+    if (vector) {
+      const vecStr = `[${vector.join(",")}]`
+      await db.execute(sql`UPDATE "Note" SET embedding = ${vecStr}::vector WHERE id = ${newNote.id}`)
+    }
+  } catch (e) {
+    console.error("Embedding failed (non-fatal):", e?.message)
+  }
+
   return c.json({ message: "Create Success!", data: newNote })
 })
 
@@ -207,6 +219,17 @@ app.put("/notes", async (c) => {
 
   // Re-resolve [[wikilinks]] — wipe old outgoing links, insert fresh
   await syncNoteLinks(db, id, content || "", updatedNote.userId)
+
+  // Re-generate embedding (content may have changed)
+  try {
+    const vector = await embedNote(c.env.AI, title, content || "")
+    if (vector) {
+      const vecStr = `[${vector.join(",")}]`
+      await db.execute(sql`UPDATE "Note" SET embedding = ${vecStr}::vector WHERE id = ${id}`)
+    }
+  } catch (e) {
+    console.error("Embedding failed (non-fatal):", e?.message)
+  }
 
   return c.json({ message: "Update success", data: updatedNote })
 })

@@ -12,6 +12,11 @@ FRONTEND_URL = "https://notebookzen.pantorn.site"
 binding = "HYPERDRIVE"
 id = "8cec8ad2d9a5445d9bd8362fbbf5e090"
 
+# Workers AI — used for note embeddings (bge-base-en-v1.5, 768 dims)
+# Free tier, no API key needed. Used for vector similarity search in chat.
+[ai]
+binding = "AI"
+
 # Required secrets — deploy FAILS if any are missing.
 # Set values via `wrangler secret put <KEY>` (NEVER in this file, NEVER in Terraform).
 # Wrangler preserves secrets across deploys — they won't be wiped.

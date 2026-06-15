@@ -1,11 +1,12 @@
 import { Hono } from "hono"
 import { getDb } from "../../db/db.js"
-import { users, notes, settings as settingsTable } from "../../db/schema.js"
-import { eq, desc } from "drizzle-orm"
+import { users, settings as settingsTable } from "../../db/schema.js"
+import { eq } from "drizzle-orm"
 import { requireAuth } from "../middleware/auth.js"
 import { ChatOpenAI } from "@langchain/openai"
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters"
+import { hybridRetrieve, fallbackRetrieve } from "../lib/retrieval.js"
+
 const app = new Hono()
 
 const SYSTEM_PROMPT = `You are a helpful AI assistant for NotebookZen, a note-taking app.
@@ -19,7 +20,7 @@ RULES:
 - Be concise but thorough.
 - Do not make up information that is not in the notes.
 
-USER'S NOTES:
+RELEVANT NOTES (retrieved via semantic + graph search):
 {notes}
 
 QUESTION: {question}
@@ -48,7 +49,7 @@ async function getUserAISettings(db, userId) {
   }
 }
 
-// ─── Create model from per-user settings ──────────────────────────────────
+// ─── Create model from per-user settings (BYOK) ──────────────────────────
 
 function createModel(userSettings) {
   const provider = userSettings.ai_provider
@@ -58,7 +59,7 @@ function createModel(userSettings) {
       if (!userSettings.google_api_key) {
         throw new Error("Google API key not configured. Please set it in Settings.")
       }
-      const model = new ChatGoogleGenerativeAI({
+      return new ChatGoogleGenerativeAI({
         model: userSettings.google_model,
         apiKey: userSettings.google_api_key,
         temperature: 0.3,
@@ -117,14 +118,25 @@ app.post("/chat", requireAuth, async (c) => {
     // ── BYOK: Load per-user AI settings ──
     const userSettings = await getUserAISettings(db, user.id)
 
-    // Fetch notes for the user
-    const noteRows = await db
-      .select()
-      .from(notes)
-      .where(eq(notes.userId, user.id))
-      .orderBy(desc(notes.createdAt))
+    // ── Hybrid retrieval (Rovo-style) ──────────────────────────────────
+    // 1. Embed question → pgvector cosine similarity top-5
+    // 2. Expand each hit with 1-hop graph neighbors from note_links
+    // 3. Fallback to "stuff all notes" if embeddings don't exist yet
+    let contextNotes
+    let retrievalMode
 
-    if (!noteRows || noteRows.length === 0) {
+    const hybrid = await hybridRetrieve(db, c.env.AI, question, user.id)
+
+    if (hybrid.source === "hybrid" && hybrid.notes.length > 0) {
+      contextNotes = hybrid.notes
+      retrievalMode = "hybrid"
+    } else {
+      const fallback = await fallbackRetrieve(db, user.id)
+      contextNotes = fallback.notes
+      retrievalMode = "fallback"
+    }
+
+    if (contextNotes.length === 0) {
       return c.json({
         answer:
           "You don't have any notes yet. Create some notes and I'll be able to help you find information in them!",
@@ -132,25 +144,18 @@ app.post("/chat", requireAuth, async (c) => {
       })
     }
 
-    const formattedNotes = noteRows
+    // ── Format context notes into prompt ───────────────────────────────
+    const formattedNotes = contextNotes
       .map((note) => {
         const content = note.content || "(empty note)"
         return `[Note "${note.title}" (ID: ${note.id})]:\n${content}`
       })
       .join("\n\n---\n\n")
 
-    const splitter = new RecursiveCharacterTextSplitter({
-      chunkSize: 20000,
-      chunkOverlap: 1000,
-    })
-
-    const chunks = await splitter.splitText(formattedNotes)
-    const relevantContext = chunks.slice(0, 3).join("\n\n---\n\n")
-
     // ── BYOK: Create model with user's own key ──
     const model = createModel(userSettings)
 
-    const prompt = SYSTEM_PROMPT.replace("{notes}", relevantContext).replace(
+    const prompt = SYSTEM_PROMPT.replace("{notes}", formattedNotes).replace(
       "{question}",
       question,
     )
@@ -160,7 +165,8 @@ app.post("/chat", requireAuth, async (c) => {
       { role: "user", content: prompt },
     ])
 
-    const sources = noteRows.map((note) => ({
+    // ── Return relevant sources only (not all notes) ───────────────────
+    const sources = contextNotes.map((note) => ({
       id: note.id,
       title: note.title,
       createdAt: note.createdAt,
@@ -169,6 +175,7 @@ app.post("/chat", requireAuth, async (c) => {
     return c.json({
       answer: response.content,
       sources,
+      retrieval: retrievalMode,
     })
   } catch (error) {
     console.error("Chat error:", error)
