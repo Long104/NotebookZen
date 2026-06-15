@@ -5,9 +5,10 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { getDb } from "../db/db.js"
-import { users, notes } from "../db/schema.js"
-import { eq, desc, sql } from "drizzle-orm"
+import { users, notes, noteLinks } from "../db/schema.js"
+import { eq, desc, sql, inArray } from "drizzle-orm"
 import { requireAuth } from "./middleware/auth.js"
+import { syncNoteLinks } from "./lib/wikilinks.js"
 import chatRoutes from "./routes/chat.js"
 import settingsRoutes from "./routes/settings.js"
 import webhookRoutes from "./routes/webhooks/clerk.js"
@@ -70,6 +71,89 @@ app.get("/notes", async (c) => {
   return c.json(result)
 })
 
+// GET /notes/graph – full graph { nodes, links } from persisted note_links
+// MUST be registered before /notes/:id so :id doesn't catch "graph"
+app.get("/notes/graph", async (c) => {
+  const db = getDb(c.env.HYPERDRIVE)
+  const clerkId = c.get("userId")
+
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1)
+
+  if (!user) return c.json({ nodes: [], links: [] })
+
+  // Nodes: all user's notes
+  const userNotes = await db
+    .select()
+    .from(notes)
+    .where(eq(notes.userId, user.id))
+
+  // Links: join note_links on source note → only this user's outgoing links
+  const rawLinks = await db
+    .select({
+      source: noteLinks.sourceNoteId,
+      target: noteLinks.targetNoteId,
+    })
+    .from(noteLinks)
+    .innerJoin(notes, eq(noteLinks.sourceNoteId, notes.id))
+    .where(eq(notes.userId, user.id))
+
+  // Compute degree for node sizing (val)
+  const degree = new Map()
+  for (const link of rawLinks) {
+    degree.set(link.source, (degree.get(link.source) || 0) + 1)
+    degree.set(link.target, (degree.get(link.target) || 0) + 1)
+  }
+
+  const nodes = userNotes.map((note) => ({
+    id: note.id,
+    name: note.title,
+    val: 1 + (degree.get(note.id) || 0),
+    createdAt: note.createdAt,
+  }))
+
+  return c.json({ nodes, links: rawLinks })
+})
+
+// GET /notes/:id/neighbors – 1-hop neighbor notes (bidirectional)
+// Used by Step 3's graph-augmented RAG retrieval.
+app.get("/notes/:id/neighbors", async (c) => {
+  const id = Number(c.req.param("id"))
+  if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
+
+  const db = getDb(c.env.HYPERDRIVE)
+
+  // Outgoing + incoming edges
+  const outgoing = await db
+    .select({ id: noteLinks.targetNoteId })
+    .from(noteLinks)
+    .where(eq(noteLinks.sourceNoteId, id))
+
+  const incoming = await db
+    .select({ id: noteLinks.sourceNoteId })
+    .from(noteLinks)
+    .where(eq(noteLinks.targetNoteId, id))
+
+  const neighborIds = [
+    ...new Set([
+      ...outgoing.map((l) => l.id),
+      ...incoming.map((l) => l.id),
+    ]),
+  ]
+
+  if (neighborIds.length === 0) return c.json([])
+
+  const neighborNotes = await db
+    .select()
+    .from(notes)
+    .where(inArray(notes.id, neighborIds))
+
+  return c.json(neighborNotes)
+})
+
 // GET /notes/:id  – single note
 app.get("/notes/:id", async (c) => {
   const id = Number(c.req.param("id"))
@@ -104,6 +188,9 @@ app.post("/notes", async (c) => {
     .values({ title, content, userId: user.id })
     .returning()
 
+  // Resolve [[wikilinks]] into note_links table
+  await syncNoteLinks(db, newNote.id, content || "", user.id)
+
   return c.json({ message: "Create Success!", data: newNote })
 })
 
@@ -117,6 +204,9 @@ app.put("/notes", async (c) => {
     .set({ title, content })
     .where(eq(notes.id, id))
     .returning()
+
+  // Re-resolve [[wikilinks]] — wipe old outgoing links, insert fresh
+  await syncNoteLinks(db, id, content || "", updatedNote.userId)
 
   return c.json({ message: "Update success", data: updatedNote })
 })
