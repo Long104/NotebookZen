@@ -37,7 +37,7 @@ resource "cloudflare_workers_script" "backend" {
 
   plain_text_binding {
     name = "FRONTEND_URL"
-    text = "https://${vercel_project.frontend.name}.vercel.app"
+    text = var.cloudflare_zone_id == "" ? "https://${vercel_project.frontend.name}.vercel.app" : "https://${var.cloudflare_frontend_subdomain}.${var.cloudflare_zone_name}"
   }
 
   secret_text_binding {

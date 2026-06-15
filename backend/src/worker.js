@@ -24,17 +24,14 @@ app.use("*", async (c, next) => {
   await next()
 })
 
-// CORS – allow both Vercel and custom domain origins
-const ALLOWED_ORIGINS = [
-  "https://notebookzen.pantorn.site",
-  "https://notebookzen.vercel.app",
-  "http://localhost:3000",
-]
+// CORS – allow the frontend origin from FRONTEND_URL env binding
+// (set by Terraform). Fallback to localhost for dev.
 app.use(
   "*",
   cors({
     origin: (origin) => {
-      if (!origin || ALLOWED_ORIGINS.includes(origin)) return origin || ALLOWED_ORIGINS[0]
+      const allowed = process.env.FRONTEND_URL || "http://localhost:3000"
+      if (!origin || origin === allowed) return allowed
       return null
     },
   }),
