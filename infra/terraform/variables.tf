@@ -21,16 +21,15 @@ variable "cloudflare_zone_name" {
   default     = ""
 }
 
-variable "cloudflare_backend_subdomain" {
-  description = "Subdomain for the backend Worker (custom domain), e.g. api"
-  type        = string
-  default     = "api"
-}
-
 variable "cloudflare_frontend_subdomain" {
   description = "Subdomain for the Vercel frontend (custom domain), e.g. notebookzen"
   type        = string
   default     = "notebookzen"
+}
+
+variable "supabase_organization_id" {
+  description = "Supabase organization slug (found in dashboard URL: https://supabase.com/dashboard/org/<slug>)"
+  type        = string
 }
 
 variable "supabase_access_token" {
@@ -41,12 +40,6 @@ variable "supabase_access_token" {
 
 variable "supabase_db_password" {
   description = "Password for the Supabase PostgreSQL database"
-  type        = string
-  sensitive   = true
-}
-
-variable "supabase_service_role_key" {
-  description = "Supabase service_role key (Project Settings → API → service_role key)"
   type        = string
   sensitive   = true
 }

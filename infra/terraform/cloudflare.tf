@@ -62,6 +62,6 @@ resource "cloudflare_record" "frontend_dns" {
 resource "cloudflare_workers_route" "backend_default" {
   count    = var.cloudflare_zone_id == "" ? 0 : 1
   zone_id  = var.cloudflare_zone_id
-  pattern  = "${var.cloudflare_backend_subdomain}.${var.cloudflare_zone_name}/*"
+  pattern  = "notebookzen-backend.${var.cloudflare_zone_name}/*"
   script_name = cloudflare_workers_script.backend.name
 }

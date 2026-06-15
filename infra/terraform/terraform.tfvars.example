@@ -6,7 +6,6 @@ cloudflare_backend_subdomain = "api"
 
 supabase_access_token        = "sbp_xxxxxxxx"
 supabase_db_password         = "your-secure-password"
-supabase_service_role_key    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 supabase_region              = "ap-southeast-1"
 
 vercel_api_token             = "xxxxxxxxxxxx"

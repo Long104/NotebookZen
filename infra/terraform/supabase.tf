@@ -1,10 +1,11 @@
 resource "supabase_project" "notebookzen" {
-  name                 = "NotebookZen"
-  database_password    = var.supabase_db_password
-  region               = var.supabase_region
-  plan                 = "free"
+  organization_id  = var.supabase_organization_id
+  name             = "NotebookZen"
+  database_password = var.supabase_db_password
+  region           = var.supabase_region
+
 }
 
 resource "supabase_settings" "general" {
-  project_id = supabase_project.notebookzen.id
+  project_ref = supabase_project.notebookzen.id
 }

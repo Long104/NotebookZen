@@ -10,7 +10,7 @@ output "supabase_project_url" {
 
 output "backend_url" {
   description = "Cloudflare Worker backend URL"
-  value       = "https://${cloudflare_workers_script.backend.subdomain}.workers.dev"
+  value       = var.cloudflare_zone_id == "" ? "https://${cloudflare_workers_script.backend.name}.<your-subdomain>.workers.dev" : "https://notebookzen-backend.${var.cloudflare_zone_name}"
 }
 
 output "worker_name" {
