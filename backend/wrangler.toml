@@ -7,6 +7,11 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 FRONTEND_URL = "https://notebookzen.pantorn.site"
 
+# Hyperdrive — connection pool to Supabase Postgres
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "8cec8ad2d9a5445d9bd8362fbbf5e090"
+
 # Secrets (set once via CLI, not stored here):
 #   wrangler secret put CLERK_SECRET_KEY
 #   wrangler secret put CLERK_WEBHOOK_SECRET
