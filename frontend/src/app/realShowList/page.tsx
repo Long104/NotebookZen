@@ -10,8 +10,9 @@ import ZenEditor from "@/components/editor/ZenEditor";
 import MarkdownRenderer from "@/components/editor/MarkdownRenderer";
 import { ArrowLeft, Pencil, Trash2, Check, X } from "lucide-react";
 import { fetchWithRetry } from "@/lib/api";
+import { mergePendingWithFetched } from "@/lib/pendingNotes";
 
-type Note = {
+export type Note = {
     id: number;
     title: string;
     content?: string;
@@ -24,7 +25,7 @@ function RealShowListContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    const [noteList, setNoteList] = useState<Note[]>([]);
+    const [noteList, setNoteList] = useState<Note[]>(() => mergePendingWithFetched([]));
     const [selectedNote, setSelectedNote] = useState<Note | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState("");
@@ -65,9 +66,10 @@ function RealShowListContent() {
                     throw new Error(`Server returned ${response.status}`);
                 }
                 const result = await response.json();
+                const mergedNotes = mergePendingWithFetched(result);
                 // Ignore result if the effect was cleaned up
                 if (abortController.signal.aborted) return;
-                setNoteList(result);
+                setNoteList(mergedNotes);
 
                 const noteId = searchParams.get("noteId");
                 if (noteId) {

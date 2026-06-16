@@ -6,6 +6,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import ZenEditor from "@/components/editor/ZenEditor";
 import { fetchWithRetry } from "@/lib/api";
+import { addPendingNote, removePendingNote } from "@/lib/pendingNotes";
 
 export default function CreateMenu() {
     const [title, setTitle] = useState("");
@@ -28,6 +29,16 @@ export default function CreateMenu() {
             setError("Title is required.");
             return;
         }
+
+        // Optimistic UI: show the note immediately before the DB round-trip
+        const tempId = -Date.now()
+        const now = new Date().toISOString()
+        addPendingNote({
+            id: tempId,
+            title,
+            content,
+            createdAt: now,
+        })
 
         setLoading(true);
 
@@ -53,6 +64,7 @@ export default function CreateMenu() {
 
             setTitle("");
             setContent("");
+            removePendingNote(tempId)
             router.push("/realShowList");
         } catch (err) {
             if (err instanceof DOMException && err.name === "AbortError") {
