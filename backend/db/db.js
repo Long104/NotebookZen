@@ -1,35 +1,47 @@
 /**
- * Returns a singleton Drizzle ORM client backed by a single pg.Pool.
+ * Lazy-loaded database context.
  *
- * In Cloudflare Workers, module-level state lives as long as the isolate.
- * Hyperdrive connection strings are stable, so the Pool can be created
- * once and reused across requests. This avoids leaking TCP connections
- * (which would exhaust the Postgres connection limit).
+ * ALL database-related modules (pg, drizzle-orm, schema) are imported
+ * dynamically on first call — NONE load at Worker cold start module scope.
  *
- * IMPORTANT: pg + drizzle-orm/node-postgres are lazy-imported on first call
- * so they are NOT loaded during Worker cold start. This keeps CPU time
- * under the free plan's 10ms limit for note CRUD operations.
+ * Returns a context object with everything handlers need:
+ *   { db, pool, eq, desc, sql, inArray, and, users, notes, noteLinks, settings }
+ *
+ * This keeps the Worker's module scope to just hono + cors (~2ms CPU),
+ * leaving ~8ms of the free plan's 10ms budget for the actual request.
  */
 
-let pool = null
-let db = null
-let schema = null
+let cache = null
 
 export async function getDb(hyperdrive) {
-  if (db) return db
+  if (cache) return cache
 
-  // Lazy-import heavy modules — not loaded on cold start
-  const [{ Pool }, { drizzle }] = await Promise.all([
+  // Load ALL heavy modules in parallel — deferred from cold start
+  const [{ Pool }, { drizzle }, drizzleUtils, schema] = await Promise.all([
     import("pg"),
     import("drizzle-orm/node-postgres"),
+    import("drizzle-orm"),
+    import("./schema.js"),
   ])
 
-  if (!schema) {
-    schema = await import("./schema.js")
+  const pool = new Pool({ connectionString: hyperdrive.connectionString })
+  const db = drizzle(pool, { schema })
+
+  cache = {
+    db,
+    pool,
+    // Drizzle query utilities
+    eq: drizzleUtils.eq,
+    desc: drizzleUtils.desc,
+    sql: drizzleUtils.sql,
+    inArray: drizzleUtils.inArray,
+    and: drizzleUtils.and,
+    // Schema table objects
+    users: schema.users,
+    notes: schema.notes,
+    noteLinks: schema.noteLinks,
+    settings: schema.settings,
   }
 
-  pool = new Pool({ connectionString: hyperdrive.connectionString })
-  db = drizzle(pool, { schema })
-
-  return db
+  return cache
 }

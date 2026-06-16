@@ -1,7 +1,5 @@
 import { Hono } from "hono"
 import { getDb } from "../../../db/db.js"
-import { users } from "../../../db/schema.js"
-import { eq } from "drizzle-orm"
 import { verifyWebhookSignature, sanitizeUsername } from "../../lib/clerk.js"
 
 const app = new Hono()
@@ -33,17 +31,17 @@ app.post("/clerk", async (c) => {
 
     console.log(`Received webhook: ${eventType}`)
 
-    const db = await getDb(c.env.HYPERDRIVE)
+    const ctx = await getDb(c.env.HYPERDRIVE)
 
     switch (eventType) {
       case "user.created":
-        await handleUserCreated(db, data)
+        await handleUserCreated(ctx, data)
         break
       case "user.updated":
-        await handleUserUpdated(db, data)
+        await handleUserUpdated(ctx, data)
         break
       case "user.deleted":
-        await handleUserDeleted(db, data)
+        await handleUserDeleted(ctx, data)
         break
       default:
         console.log(`Unhandled event type: ${eventType}`)
@@ -58,7 +56,8 @@ app.post("/clerk", async (c) => {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-async function handleUserCreated(db, data) {
+async function handleUserCreated(ctx, data) {
+  const { db, users } = ctx
   const { id, username, email_addresses, primary_email_address_id } = data
 
   const primaryEmail = email_addresses.find(
@@ -87,7 +86,8 @@ async function handleUserCreated(db, data) {
   return user
 }
 
-async function handleUserUpdated(db, data) {
+async function handleUserUpdated(ctx, data) {
+  const { db, users } = ctx
   const { id, username, email_addresses, primary_email_address_id } = data
 
   const primaryEmail = email_addresses.find(
@@ -116,7 +116,8 @@ async function handleUserUpdated(db, data) {
   return user
 }
 
-async function handleUserDeleted(db, data) {
+async function handleUserDeleted(ctx, data) {
+  const { db, eq, users } = ctx
   const { id } = data
 
   await db.delete(users).where(eq(users.clerkId, id))

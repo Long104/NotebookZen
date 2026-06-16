@@ -1,16 +1,9 @@
-import { eq } from "drizzle-orm"
-import { notes, noteLinks } from "../../db/schema.js"
-
 /**
  * Same regex as frontend src/lib/graph.ts — keep in sync.
  * Matches [[Title]] and [[Title|alias]] (Obsidian-style).
  */
 const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g
 
-/**
- * Extract raw [[Title]] references from note content.
- * Returns trimmed titles in their original casing.
- */
 export function extractWikilinks(content) {
   const matches = [...(content || "").matchAll(WIKILINK_RE)]
   return matches.map((m) => m[1].trim())
@@ -19,23 +12,13 @@ export function extractWikilinks(content) {
 /**
  * Resolve a note's [[wikilinks]] into concrete note-to-note edges.
  *
- * 1. Parse [[Title]] refs from content.
- * 2. Look up the user's notes to match titles → note IDs (case-insensitive).
- * 3. Return deduplicated { sourceNoteId, targetNoteId } pairs.
- *    Self-loops and unresolved titles are silently dropped.
- *
- * @param {ReturnType<typeof import("../db/db.js").getDb>} db
- * @param {number} sourceNoteId  — the note being created/edited
- * @param {string} content       — the note's markdown content
- * @param {number} userId        — owner of the notes (scopes title matching)
- * @returns {Promise<Array<{ sourceNoteId: number, targetNoteId: number }>>}
+ * @param {object} ctx — DB context from getDb() { db, eq, notes }
  */
-export async function resolveLinks(db, sourceNoteId, content, userId) {
+export async function resolveLinks(ctx, sourceNoteId, content, userId) {
+  const { db, eq, notes } = ctx
   const refs = extractWikilinks(content)
   if (refs.length === 0) return []
 
-  // Fetch all of the user's notes to build a title→id map.
-  // For a personal notes app this is fast (< 1000 notes).
   const userNotes = await db
     .select({ id: notes.id, title: notes.title })
     .from(notes)
@@ -51,7 +34,7 @@ export async function resolveLinks(db, sourceNoteId, content, userId) {
   for (const ref of refs) {
     const targetId = titleToId.get(ref.toLowerCase().trim())
     if (targetId === undefined) continue
-    if (targetId === sourceNoteId) continue // no self-loops
+    if (targetId === sourceNoteId) continue
 
     const key = `${sourceNoteId}-${targetId}`
     if (seen.has(key)) continue
@@ -64,23 +47,16 @@ export async function resolveLinks(db, sourceNoteId, content, userId) {
 }
 
 /**
- * Full lifecycle: wipe old outgoing links for a note, then re-resolve
- * from its current content and insert fresh links.
+ * Full lifecycle: wipe old outgoing links for a note, then re-resolve.
  *
- * Call this after POST /notes (create) or PUT /notes (update).
- * On DELETE, the FK cascade handles cleanup automatically — no call needed.
- *
- * @param {ReturnType<typeof import("../db/db.js").getDb>} db
- * @param {number} noteId
- * @param {string} content
- * @param {number} userId
+ * @param {object} ctx — DB context from getDb()
  */
-export async function syncNoteLinks(db, noteId, content, userId) {
-  // Wipe existing outgoing links (incoming links from other notes stay)
+export async function syncNoteLinks(ctx, noteId, content, userId) {
+  const { db, eq, noteLinks } = ctx
+
   await db.delete(noteLinks).where(eq(noteLinks.sourceNoteId, noteId))
 
-  // Resolve and insert fresh
-  const links = await resolveLinks(db, noteId, content, userId)
+  const links = await resolveLinks(ctx, noteId, content, userId)
   if (links.length > 0) {
     await db.insert(noteLinks).values(links)
   }

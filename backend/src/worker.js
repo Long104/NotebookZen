@@ -5,8 +5,6 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { getDb } from "../db/db.js"
-import { users, notes, noteLinks } from "../db/schema.js"
-import { eq, desc, sql, inArray } from "drizzle-orm"
 import { requireAuth } from "./middleware/auth.js"
 import { syncNoteLinks } from "./lib/wikilinks.js"
 import { embedNote } from "./lib/embeddings.js"
@@ -80,7 +78,7 @@ app.use("/api/settings/*", requireAuth)
 
 // GET /notes  – list all notes for the authenticated user
 app.get("/notes", async (c) => {
-  const db = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, desc, users, notes } = await getDb(c.env.HYPERDRIVE)
   const clerkId = c.get("userId")
 
   const [user] = await db
@@ -103,7 +101,7 @@ app.get("/notes", async (c) => {
 // GET /notes/graph – full graph { nodes, links } from persisted note_links
 // MUST be registered before /notes/:id so :id doesn't catch "graph"
 app.get("/notes/graph", async (c) => {
-  const db = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, users, notes, noteLinks } = await getDb(c.env.HYPERDRIVE)
   const clerkId = c.get("userId")
 
   const [user] = await db
@@ -114,13 +112,11 @@ app.get("/notes/graph", async (c) => {
 
   if (!user) return c.json({ nodes: [], links: [] })
 
-  // Nodes: all user's notes
   const userNotes = await db
     .select()
     .from(notes)
     .where(eq(notes.userId, user.id))
 
-  // Links: join note_links on source note → only this user's outgoing links
   const rawLinks = await db
     .select({
       source: noteLinks.sourceNoteId,
@@ -130,7 +126,6 @@ app.get("/notes/graph", async (c) => {
     .innerJoin(notes, eq(noteLinks.sourceNoteId, notes.id))
     .where(eq(notes.userId, user.id))
 
-  // Compute degree for node sizing (val)
   const degree = new Map()
   for (const link of rawLinks) {
     degree.set(link.source, (degree.get(link.source) || 0) + 1)
@@ -148,14 +143,12 @@ app.get("/notes/graph", async (c) => {
 })
 
 // GET /notes/:id/neighbors – 1-hop neighbor notes (bidirectional)
-// Used by Step 3's graph-augmented RAG retrieval.
 app.get("/notes/:id/neighbors", async (c) => {
   const id = Number(c.req.param("id"))
   if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
 
-  const db = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, inArray, notes, noteLinks } = await getDb(c.env.HYPERDRIVE)
 
-  // Outgoing + incoming edges
   const outgoing = await db
     .select({ id: noteLinks.targetNoteId })
     .from(noteLinks)
@@ -188,7 +181,7 @@ app.get("/notes/:id", async (c) => {
   const id = Number(c.req.param("id"))
   if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
 
-  const db = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, notes } = await getDb(c.env.HYPERDRIVE)
   const [note] = await db
     .select()
     .from(notes)
@@ -200,7 +193,8 @@ app.get("/notes/:id", async (c) => {
 
 // POST /notes  – create note for the authenticated user
 app.post("/notes", async (c) => {
-  const db = await getDb(c.env.HYPERDRIVE)
+  const ctx = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, sql, users, notes } = ctx
   const clerkId = c.get("userId")
   const { title, content } = await c.req.json()
 
@@ -217,10 +211,8 @@ app.post("/notes", async (c) => {
     .values({ title, content, userId: user.id })
     .returning()
 
-  // Resolve [[wikilinks]] into note_links table
-  await syncNoteLinks(db, newNote.id, content || "", user.id)
+  await syncNoteLinks(ctx, newNote.id, content || "", user.id)
 
-  // Generate + store embedding (non-fatal if Workers AI is unavailable)
   try {
     const vector = await embedNote(c.env.AI, title, content || "")
     if (vector) {
@@ -236,7 +228,8 @@ app.post("/notes", async (c) => {
 
 // PUT /notes  – update note
 app.put("/notes", async (c) => {
-  const db = await getDb(c.env.HYPERDRIVE)
+  const ctx = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, sql, notes } = ctx
   const { id, title, content } = await c.req.json()
 
   const [updatedNote] = await db
@@ -245,10 +238,8 @@ app.put("/notes", async (c) => {
     .where(eq(notes.id, id))
     .returning()
 
-  // Re-resolve [[wikilinks]] — wipe old outgoing links, insert fresh
-  await syncNoteLinks(db, id, content || "", updatedNote.userId)
+  await syncNoteLinks(ctx, id, content || "", updatedNote.userId)
 
-  // Re-generate embedding (content may have changed)
   try {
     const vector = await embedNote(c.env.AI, title, content || "")
     if (vector) {
@@ -264,7 +255,7 @@ app.put("/notes", async (c) => {
 
 // DELETE /notes  – delete note (must belong to current user)
 app.delete("/notes", async (c) => {
-  const db = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, users, notes, noteLinks } = await getDb(c.env.HYPERDRIVE)
   const clerkId = c.get("userId")
 
   const [user] = await db
@@ -282,7 +273,6 @@ app.delete("/notes", async (c) => {
     return c.json({ error: "Note ID is required" }, 400)
   }
 
-  // Verify the note belongs to this user
   const [note] = await db
     .select({ id: notes.id, userId: notes.userId })
     .from(notes)
@@ -295,12 +285,8 @@ app.delete("/notes", async (c) => {
     return c.json({ error: "Unauthorized" }, 403)
   }
 
-  // Delete noteLinks first (both directions) — safety net even if FK cascade
-  // isn't properly set up on the actual Supabase database. Prevents FK violation.
   await db.delete(noteLinks).where(eq(noteLinks.sourceNoteId, id))
   await db.delete(noteLinks).where(eq(noteLinks.targetNoteId, id))
-
-  // Delete the note itself
   await db.delete(notes).where(eq(notes.id, id))
 
   return c.json({ message: "delete data", data: { id } })
@@ -308,7 +294,7 @@ app.delete("/notes", async (c) => {
 
 // GET /notesCount/:id  – count notes for a user (by user's id, not clerkId)
 app.get("/notesCount/:id", async (c) => {
-  const db = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, sql, notes } = await getDb(c.env.HYPERDRIVE)
   const userId = Number(c.req.param("id"))
 
   const [result] = await db

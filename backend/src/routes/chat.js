@@ -1,7 +1,5 @@
 import { Hono } from "hono"
 import { getDb } from "../../db/db.js"
-import { users, settings as settingsTable } from "../../db/schema.js"
-import { eq } from "drizzle-orm"
 import { requireAuth } from "../middleware/auth.js"
 import { hybridRetrieve, fallbackRetrieve } from "../lib/retrieval.js"
 
@@ -27,7 +25,8 @@ ANSWER:`
 
 // ─── Fetch user AI settings from DB ──────────────────────────────────────
 
-async function getUserAISettings(db, userId) {
+async function getUserAISettings(ctx, userId) {
+  const { db, eq, settings: settingsTable } = ctx
   const rows = await db
     .select({ key: settingsTable.key, value: settingsTable.value })
     .from(settingsTable)
@@ -104,7 +103,8 @@ app.post("/chat", requireAuth, async (c) => {
       return c.json({ error: "Question is required" }, 400)
     }
 
-    const db = await getDb(c.env.HYPERDRIVE)
+    const ctx = await getDb(c.env.HYPERDRIVE)
+    const { db, eq, users } = ctx
 
     // Resolve clerkId → user
     const [user] = await db
@@ -118,22 +118,19 @@ app.post("/chat", requireAuth, async (c) => {
     }
 
     // ── BYOK: Load per-user AI settings ──
-    const userSettings = await getUserAISettings(db, user.id)
+    const userSettings = await getUserAISettings(ctx, user.id)
 
     // ── Hybrid retrieval (Rovo-style) ──────────────────────────────────
-    // 1. Embed question → pgvector cosine similarity top-5
-    // 2. Expand each hit with 1-hop graph neighbors from note_links
-    // 3. Fallback to "stuff all notes" if embeddings don't exist yet
     let contextNotes
     let retrievalMode
 
-    const hybrid = await hybridRetrieve(db, c.env.AI, question, user.id)
+    const hybrid = await hybridRetrieve(ctx, c.env.AI, question, user.id)
 
     if (hybrid.source === "hybrid" && hybrid.notes.length > 0) {
       contextNotes = hybrid.notes
       retrievalMode = "hybrid"
     } else {
-      const fallback = await fallbackRetrieve(db, user.id)
+      const fallback = await fallbackRetrieve(ctx, user.id)
       contextNotes = fallback.notes
       retrievalMode = "fallback"
     }
