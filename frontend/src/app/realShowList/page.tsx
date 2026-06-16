@@ -36,12 +36,23 @@ function RealShowListContent() {
     }, [isLoaded, isSignedIn, router]);
 
     useEffect(() => {
+        // Don't fetch until Clerk has loaded
+        if (!isLoaded) return;
+
+        const abortController = new AbortController();
+
         const fetchData = async () => {
-            const token = await getToken();
             try {
+                const token = await getToken();
+                if (!token) {
+                    console.warn("No auth token available yet — skipping fetch");
+                    return;
+                }
+
                 const response = await fetch(
                     `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
                     {
+                        signal: abortController.signal,
                         cache: "no-store",
                         headers: {
                             "Content-Type": "application/json",
@@ -49,8 +60,12 @@ function RealShowListContent() {
                         },
                     },
                 );
-                if (!response.ok) throw new Error("failed to fetch");
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}`);
+                }
                 const result = await response.json();
+                // Ignore result if the effect was cleaned up
+                if (abortController.signal.aborted) return;
                 setNoteList(result);
 
                 const noteId = searchParams.get("noteId");
@@ -61,11 +76,14 @@ function RealShowListContent() {
                     if (targetNote) setSelectedNote(targetNote);
                 }
             } catch (error) {
+                if (abortController.signal.aborted) return; // ignore cancellations
                 console.error("Error fetching notes:", error);
             }
         };
         fetchData();
-    }, [getToken, searchParams]);
+
+        return () => abortController.abort();
+    }, [isLoaded, getToken, searchParams]);
 
     if (!isLoaded || !isSignedIn) {
         return null;
@@ -89,6 +107,10 @@ function RealShowListContent() {
 
     async function handleSaveUpdate() {
         const token = await getToken();
+        if (!token) {
+            console.error("No auth token available");
+            return;
+        }
         try {
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
@@ -105,7 +127,9 @@ function RealShowListContent() {
                     }),
                 },
             );
-            if (!response.ok) throw new Error("Failed to update note");
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
             const result = await response.json();
             const updatedNote = result.data;
             setNoteList((prev) =>
@@ -120,6 +144,10 @@ function RealShowListContent() {
 
     async function handleDeleteButton() {
         const token = await getToken();
+        if (!token) {
+            console.error("No auth token available");
+            return;
+        }
         try {
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
@@ -132,6 +160,9 @@ function RealShowListContent() {
                     body: JSON.stringify({ id: selectedNote!.id }),
                 },
             );
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
             const result = await response.json();
             const deletedNote = result.data;
             setNoteList((prev) => prev.filter((note) => note.id !== deletedNote.id));
