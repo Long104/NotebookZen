@@ -3,6 +3,12 @@ main = "src/worker.js"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Keep Worker warm — free plan 10ms CPU limit is insufficient for cold-start
+# module loading. A ping every 2 minutes keeps the module scope in memory so
+# most user requests hit a warm Worker.
+[triggers]
+crons = ["*/2 * * * *"]
+
 # Non-secret env vars (safe to commit)
 [vars]
 FRONTEND_URL = "https://notebookzen.pantorn.site"

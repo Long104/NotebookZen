@@ -26,7 +26,7 @@ function maskValue(value) {
 app.get("/", requireAuth, async (c) => {
   try {
     const clerkId = c.get("userId")
-    const db = getDb(c.env.HYPERDRIVE)
+    const db = await getDb(c.env.HYPERDRIVE)
 
     const [user] = await db
       .select({ id: users.id })
@@ -88,7 +88,7 @@ app.post("/", requireAuth, async (c) => {
       return c.json({ error: "settings object is required" }, 400)
     }
 
-    const db = getDb(c.env.HYPERDRIVE)
+    const db = await getDb(c.env.HYPERDRIVE)
 
     const [user] = await db
       .select({ id: users.id })

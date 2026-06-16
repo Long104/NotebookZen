@@ -33,7 +33,7 @@ app.post("/clerk", async (c) => {
 
     console.log(`Received webhook: ${eventType}`)
 
-    const db = getDb(c.env.HYPERDRIVE)
+    const db = await getDb(c.env.HYPERDRIVE)
 
     switch (eventType) {
       case "user.created":

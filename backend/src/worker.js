@@ -80,7 +80,7 @@ app.use("/api/settings/*", requireAuth)
 
 // GET /notes  – list all notes for the authenticated user
 app.get("/notes", async (c) => {
-  const db = getDb(c.env.HYPERDRIVE)
+  const db = await getDb(c.env.HYPERDRIVE)
   const clerkId = c.get("userId")
 
   const [user] = await db
@@ -103,7 +103,7 @@ app.get("/notes", async (c) => {
 // GET /notes/graph – full graph { nodes, links } from persisted note_links
 // MUST be registered before /notes/:id so :id doesn't catch "graph"
 app.get("/notes/graph", async (c) => {
-  const db = getDb(c.env.HYPERDRIVE)
+  const db = await getDb(c.env.HYPERDRIVE)
   const clerkId = c.get("userId")
 
   const [user] = await db
@@ -153,7 +153,7 @@ app.get("/notes/:id/neighbors", async (c) => {
   const id = Number(c.req.param("id"))
   if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
 
-  const db = getDb(c.env.HYPERDRIVE)
+  const db = await getDb(c.env.HYPERDRIVE)
 
   // Outgoing + incoming edges
   const outgoing = await db
@@ -188,7 +188,7 @@ app.get("/notes/:id", async (c) => {
   const id = Number(c.req.param("id"))
   if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
 
-  const db = getDb(c.env.HYPERDRIVE)
+  const db = await getDb(c.env.HYPERDRIVE)
   const [note] = await db
     .select()
     .from(notes)
@@ -200,7 +200,7 @@ app.get("/notes/:id", async (c) => {
 
 // POST /notes  – create note for the authenticated user
 app.post("/notes", async (c) => {
-  const db = getDb(c.env.HYPERDRIVE)
+  const db = await getDb(c.env.HYPERDRIVE)
   const clerkId = c.get("userId")
   const { title, content } = await c.req.json()
 
@@ -236,7 +236,7 @@ app.post("/notes", async (c) => {
 
 // PUT /notes  – update note
 app.put("/notes", async (c) => {
-  const db = getDb(c.env.HYPERDRIVE)
+  const db = await getDb(c.env.HYPERDRIVE)
   const { id, title, content } = await c.req.json()
 
   const [updatedNote] = await db
@@ -264,7 +264,7 @@ app.put("/notes", async (c) => {
 
 // DELETE /notes  – delete note (must belong to current user)
 app.delete("/notes", async (c) => {
-  const db = getDb(c.env.HYPERDRIVE)
+  const db = await getDb(c.env.HYPERDRIVE)
   const clerkId = c.get("userId")
 
   const [user] = await db
@@ -308,7 +308,7 @@ app.delete("/notes", async (c) => {
 
 // GET /notesCount/:id  – count notes for a user (by user's id, not clerkId)
 app.get("/notesCount/:id", async (c) => {
-  const db = getDb(c.env.HYPERDRIVE)
+  const db = await getDb(c.env.HYPERDRIVE)
   const userId = Number(c.req.param("id"))
 
   const [result] = await db
@@ -324,4 +324,24 @@ app.route("/api", chatRoutes)
 app.route("/api/settings", settingsRoutes)
 
 // ─── Export ────────────────────────────────────────────────────────────────
-export default app
+export default {
+  fetch(request, env, ctx) {
+    return app.fetch(request, env, ctx)
+  },
+
+  /**
+   * CRON trigger to keep the Worker warm.
+   *
+   * Cloudflare free plan imposes a 10ms CPU time limit per request. On cold
+   * start, loading all modules (hono, pg, drizzle-orm, schema, clerk, etc.)
+   * can exceed this limit, causing error 1101 ("code had hung").
+   *
+   * By running every 2 minutes, the Worker's module scope stays in memory,
+   * so the ~6ms of module-loading CPU is already "paid" when a user request
+   * arrives. Only the request-specific code (@clerk/backend, pg Pool
+   * creation, DB queries) needs to run within the 10ms budget.
+   */
+  async scheduled(event, env, ctx) {
+    // No-op — just keeping the Worker warm
+  },
+}
