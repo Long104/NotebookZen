@@ -8,7 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import Navbar from "@/components/Navbar";
 import ZenEditor from "@/components/editor/ZenEditor";
 import MarkdownRenderer from "@/components/editor/MarkdownRenderer";
-import { ArrowLeft, Pencil, Trash2, Check, X } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Check, X, Loader2 } from "lucide-react";
 import { fetchWithRetry } from "@/lib/api";
 import { mergePendingWithFetched } from "@/lib/pendingNotes";
 
@@ -30,6 +30,9 @@ function RealShowListContent() {
     const [isEditing, setIsEditing] = useState(false);
     const [editTitle, setEditTitle] = useState("");
     const [editContent, setEditContent] = useState("");
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [actionError, setActionError] = useState("");
 
     useEffect(() => {
         if (isLoaded && !isSignedIn) {
@@ -109,11 +112,26 @@ function RealShowListContent() {
     }
 
     async function handleSaveUpdate() {
+        if (!selectedNote || isSaving) return;
+        setActionError("");
+
         const token = await getToken();
         if (!token) {
             console.error("No auth token available");
             return;
         }
+
+        // Snapshot for rollback
+        const prevNote = selectedNote;
+
+        // Optimistic UI: update immediately
+        const optimisticNote = { ...prevNote, title: editTitle, content: editContent };
+        setNoteList((prev) =>
+            prev.map((note) => (note.id === prevNote.id ? optimisticNote : note)),
+        );
+        setSelectedNote(optimisticNote);
+        setIsSaving(true);
+
         try {
             const response = await fetchWithRetry(
                 `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
@@ -124,7 +142,7 @@ function RealShowListContent() {
                         Authorization: `Bearer ${token}`,
                     },
                     body: JSON.stringify({
-                        id: selectedNote!.id,
+                        id: prevNote.id,
                         title: editTitle,
                         content: editContent,
                     }),
@@ -142,15 +160,36 @@ function RealShowListContent() {
             setIsEditing(false);
         } catch (error) {
             console.error("Error updating note:", error);
+            // Rollback
+            setNoteList((prev) =>
+                prev.map((note) => (note.id === prevNote.id ? prevNote : note)),
+            );
+            setSelectedNote(prevNote);
+            setActionError("Failed to save. Please try again.");
+        } finally {
+            setIsSaving(false);
         }
     }
 
     async function handleDeleteButton() {
+        if (!selectedNote || isDeleting) return;
+        setActionError("");
+
         const token = await getToken();
         if (!token) {
             console.error("No auth token available");
             return;
         }
+
+        // Snapshot for rollback
+        const prevNote = selectedNote;
+
+        // Optimistic UI: remove note immediately
+        setNoteList((prev) => prev.filter((note) => note.id !== prevNote.id));
+        setSelectedNote(null);
+        setIsEditing(false);
+        setIsDeleting(true);
+
         try {
             const response = await fetchWithRetry(
                 `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
@@ -160,19 +199,25 @@ function RealShowListContent() {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${token}`,
                     },
-                    body: JSON.stringify({ id: selectedNote!.id }),
+                    body: JSON.stringify({ id: prevNote.id }),
                 },
             );
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
             }
-            const result = await response.json();
-            const deletedNote = result.data;
-            setNoteList((prev) => prev.filter((note) => note.id !== deletedNote.id));
-            setSelectedNote(null);
-            setIsEditing(false);
         } catch (error) {
             console.error("Error deleting note:", error);
+            // Rollback: restore the note
+            setNoteList((prev) => {
+                const withoutNote = prev.filter((note) => note.id !== prevNote.id);
+                return [...withoutNote, prevNote].sort(
+                    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+                );
+            });
+            setSelectedNote(prevNote);
+            setActionError("Failed to delete. Please try again.");
+        } finally {
+            setIsDeleting(false);
         }
     }
 
@@ -218,6 +263,18 @@ function RealShowListContent() {
                     </div>
 
                     <div className="flex-1 p-6 overflow-y-auto">
+                        {actionError && (
+                            <div className="max-w-3xl mx-auto mb-4 px-4 py-3 rounded-lg bg-[var(--zen-error-container)] text-[var(--zen-on-error-container)] text-sm flex items-center justify-between">
+                                <span>{actionError}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setActionError("")}
+                                    className="ml-4 opacity-70 hover:opacity-100"
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                        )}
                         {selectedNote ? (
                             isEditing ? (
                                 <div className="max-w-3xl mx-auto flex flex-col gap-6">
@@ -231,15 +288,21 @@ function RealShowListContent() {
                                         <div className="flex gap-2 ml-4">
                                             <button
                                                 type="button"
-                                                className="zen-btn-primary flex items-center gap-1.5 text-xs"
+                                                className="zen-btn-primary flex items-center gap-1.5 text-xs disabled:opacity-50"
+                                                disabled={isSaving}
                                                 onClick={handleSaveUpdate}
                                             >
-                                                <Check size={14} />
-                                                Save
+                                                {isSaving ? (
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                ) : (
+                                                    <Check size={14} />
+                                                )}
+                                                {isSaving ? "Saving..." : "Save"}
                                             </button>
                                             <button
                                                 type="button"
-                                                className="zen-btn-ghost flex items-center gap-1.5 text-xs"
+                                                className="zen-btn-ghost flex items-center gap-1.5 text-xs disabled:opacity-50"
+                                                disabled={isSaving}
                                                 onClick={handleCancel}
                                             >
                                                 <X size={14} />
@@ -270,7 +333,8 @@ function RealShowListContent() {
                                         <div className="flex gap-2">
                                             <button
                                                 type="button"
-                                                className="zen-btn-ghost flex items-center gap-1.5 text-xs"
+                                                className="zen-btn-ghost flex items-center gap-1.5 text-xs disabled:opacity-50"
+                                                disabled={isDeleting}
                                                 onClick={handleEditNote}
                                             >
                                                 <Pencil size={14} />
@@ -278,11 +342,16 @@ function RealShowListContent() {
                                             </button>
                                             <button
                                                 type="button"
-                                                className="zen-btn-ghost flex items-center gap-1.5 text-xs text-[var(--zen-error)]"
+                                                className="zen-btn-ghost flex items-center gap-1.5 text-xs text-[var(--zen-error)] disabled:opacity-50"
+                                                disabled={isDeleting}
                                                 onClick={handleDeleteButton}
                                             >
-                                                <Trash2 size={14} />
-                                                Delete
+                                                {isDeleting ? (
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                ) : (
+                                                    <Trash2 size={14} />
+                                                )}
+                                                {isDeleting ? "Deleting..." : "Delete"}
                                             </button>
                                         </div>
                                     </div>

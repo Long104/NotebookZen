@@ -1,9 +1,6 @@
-export type Note = {
-    id: number;
-    title: string;
-    content?: string;
-    createdAt: string;
-};
+import type { Note } from "@/lib/types";
+
+export type { Note };
 
 export type GraphNode = {
     id: number;

@@ -6,7 +6,7 @@
  * note and the real fetched data takes over.
  */
 
-import type { Note } from "@/app/realShowList/page"
+import type { Note } from "@/lib/types"
 
 const PENDING_NOTES_KEY = "notebookzen:pending_notes"
 
