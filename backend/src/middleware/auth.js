@@ -1,6 +1,12 @@
+import { verifyToken } from "../lib/jwt.js"
+
 /**
  * Hono middleware that requires a valid Clerk session token.
  * On success, sets `c.get("userId")` to the Clerk user ID.
+ *
+ * JWT verification uses the Web Crypto API (crypto.subtle) — zero dependencies,
+ * zero module-loading CPU cost. This replaced @clerk/backend (~50KB) to keep
+ * the Worker's cold start under Cloudflare's free plan 10ms CPU limit.
  */
 export async function requireAuth(c, next) {
   const authHeader = c.req.header("Authorization")
@@ -12,22 +18,16 @@ export async function requireAuth(c, next) {
   const token = authHeader.split(" ")[1]
 
   try {
-    // Lazy-import @clerk/backend — this module is heavy (~50KB+) and
-    // loading it at module scope adds ~5-10ms CPU time on cold start.
-    const { verifyToken } = await import("@clerk/backend")
+    const payload = await verifyToken(token)
 
-    const { sub: userId } = await verifyToken(token, {
-      secretKey: process.env.CLERK_SECRET_KEY,
-    })
-
-    if (!userId) {
-      return c.json({ error: "Invalid token" }, 401)
+    if (!payload.sub) {
+      return c.json({ error: "Invalid token: no user ID" }, 401)
     }
 
-    c.set("userId", userId)
+    c.set("userId", payload.sub)
     await next()
   } catch (error) {
-    console.error("Auth error:", error)
+    console.error("Auth error:", error?.message || error)
     return c.json({ error: "Unauthorized" }, 401)
   }
 }
