@@ -39,6 +39,14 @@ app.use(
   }),
 )
 
+// Prevent browser caching of all API responses.
+// Without this, browsers serve stale GET /notes after a DELETE,
+// making it look like deletes don't persist.
+app.use("*", async (c, next) => {
+  await next()
+  c.header("Cache-Control", "no-store, no-cache, must-revalidate")
+})
+
 // ─── Public routes ─────────────────────────────────────────────────────────
 app.get("/", (c) => c.text("Hello world."))
 app.route("/api/webhooks", webhookRoutes)

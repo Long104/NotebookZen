@@ -42,6 +42,7 @@ function RealShowListContent() {
                 const response = await fetch(
                     `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
                     {
+                        cache: "no-store",
                         headers: {
                             "Content-Type": "application/json",
                             Authorization: `Bearer ${token}`,
