@@ -26,14 +26,20 @@ app.use("*", async (c, next) => {
   await next()
 })
 
-// CORS – allow the frontend origin from FRONTEND_URL env binding
-// (set by Terraform). Fallback to localhost for dev.
+// CORS – allow the frontend origin from FRONTEND_URL env binding.
+// Uses hostname matching so protocols/ports don't break the check.
 app.use(
   "*",
   cors({
     origin: (origin) => {
-      const allowed = process.env.FRONTEND_URL || "http://localhost:3000"
-      if (!origin || origin === allowed) return allowed
+      if (!origin) return origin
+      const allowed = process.env.FRONTEND_URL
+      if (!allowed) return origin // dev mode — permissive
+      try {
+        const allowedHost = new URL(allowed).hostname
+        const originHost = new URL(origin).hostname
+        if (originHost === allowedHost) return origin
+      } catch {}
       return null
     },
   }),
@@ -45,6 +51,14 @@ app.use(
 app.use("*", async (c, next) => {
   await next()
   c.header("Cache-Control", "no-store, no-cache, must-revalidate")
+})
+
+// ─── Global error handler ──────────────────────────────────────────────────
+// Catches unhandled exceptions (e.g. DB connection failure) and returns a
+// proper JSON 500 so the CORS middleware can still set headers on it.
+app.onError((err, c) => {
+  console.error("Unhandled error:", err?.message, err?.stack)
+  return c.json({ error: "Internal server error" }, 500)
 })
 
 // ─── Public routes ─────────────────────────────────────────────────────────
@@ -242,10 +256,38 @@ app.put("/notes", async (c) => {
   return c.json({ message: "Update success", data: updatedNote })
 })
 
-// DELETE /notes  – delete note
+// DELETE /notes  – delete note (must belong to current user)
 app.delete("/notes", async (c) => {
   const db = getDb(c.env.HYPERDRIVE)
-  const { id } = await c.req.json()
+  const clerkId = c.get("userId")
+
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.clerkId, clerkId))
+    .limit(1)
+
+  if (!user) return c.json({ error: "User not found" }, 404)
+
+  const body = await c.req.json().catch(() => ({}))
+  const { id } = body
+
+  if (!id || isNaN(Number(id))) {
+    return c.json({ error: "Note ID is required" }, 400)
+  }
+
+  // Verify the note belongs to this user
+  const [note] = await db
+    .select({ id: notes.id, userId: notes.userId })
+    .from(notes)
+    .where(eq(notes.id, id))
+    .limit(1)
+
+  if (!note) return c.json({ error: "Note not found" }, 404)
+
+  if (note.userId !== user.id) {
+    return c.json({ error: "Unauthorized" }, 403)
+  }
 
   await db.delete(notes).where(eq(notes.id, id))
 
