@@ -316,18 +316,22 @@ export default {
   },
 
   /**
-   * CRON trigger to keep the Worker warm.
+   * CRON trigger — pre-warms ALL heavy modules so user requests never
+   * pay the cold-start CPU cost.
    *
-   * Cloudflare free plan imposes a 10ms CPU time limit per request. On cold
-   * start, loading all modules (hono, pg, drizzle-orm, schema, clerk, etc.)
-   * can exceed this limit, causing error 1101 ("code had hung").
+   * Every 2 minutes this fires and calls getDb(), which:
+   *   1. Dynamically imports pg + drizzle-orm + schema (~5ms CPU)
+   *   2. Creates the Hyperdrive Pool (~1ms CPU)
+   *   3. Caches everything in the isolate's module-level state
    *
-   * By running every 2 minutes, the Worker's module scope stays in memory,
-   * so the ~6ms of module-loading CPU is already "paid" when a user request
-   * arrives. Only the request-specific code (@clerk/backend, pg Pool
-   * creation, DB queries) needs to run within the 10ms budget.
+   * After this, user requests find everything pre-loaded:
+   *   getDb() returns instantly (cached), queries just run (~2ms total).
    */
   async scheduled(event, env, ctx) {
-    // No-op — just keeping the Worker warm
+    try {
+      ctx.waitUntil(getDb(env.HYPERDRIVE))
+    } catch (e) {
+      // Non-fatal — the Worker stays warm even if pre-warm fails
+    }
   },
 }
