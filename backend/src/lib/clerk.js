@@ -1,15 +1,15 @@
-import { createClerkClient } from "@clerk/backend"
-import { Webhook } from "svix"
-
-// Clerk client reads CLERK_SECRET_KEY from process.env by default.
-// process.env is populated by the env-injection middleware in worker.js.
-export const clerk = createClerkClient()
-
 /**
  * Verify a Clerk webhook payload using the svix Webhook class.
  * The payload must be a raw Buffer (not a parsed JSON object).
+ * 
+ * Lazy-imports svix (@clerk/backend) — both are heavy and should not
+ * be loaded at module scope on cold start.
  */
-export function verifyWebhookSignature(payload, svixHeaders) {
+export async function verifyWebhookSignature(payload, svixHeaders) {
+  const [{ Webhook }, { createClerkClient }] = await Promise.all([
+    import("svix"),
+    import("@clerk/backend"),
+  ])
   const webhook = new Webhook(process.env.CLERK_WEBHOOK_SECRET)
   return webhook.verify(payload, svixHeaders)
 }

@@ -3,8 +3,6 @@ import { getDb } from "../../db/db.js"
 import { users, settings as settingsTable } from "../../db/schema.js"
 import { eq } from "drizzle-orm"
 import { requireAuth } from "../middleware/auth.js"
-import { ChatOpenAI } from "@langchain/openai"
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
 import { hybridRetrieve, fallbackRetrieve } from "../lib/retrieval.js"
 
 const app = new Hono()
@@ -50,8 +48,10 @@ async function getUserAISettings(db, userId) {
 }
 
 // ─── Create model from per-user settings (BYOK) ──────────────────────────
+// Lazy-imports @langchain/* modules — they are very heavy (~200KB+ each)
+// and should not be loaded at module scope on cold start.
 
-function createModel(userSettings) {
+async function createModel(userSettings) {
   const provider = userSettings.ai_provider
 
   switch (provider) {
@@ -59,6 +59,7 @@ function createModel(userSettings) {
       if (!userSettings.google_api_key) {
         throw new Error("Google API key not configured. Please set it in Settings.")
       }
+      const { ChatGoogleGenerativeAI } = await import("@langchain/google-genai")
       return new ChatGoogleGenerativeAI({
         model: userSettings.google_model,
         apiKey: userSettings.google_api_key,
@@ -71,6 +72,7 @@ function createModel(userSettings) {
       if (!userSettings.openrouter_api_key) {
         throw new Error("OpenRouter API key not configured. Please set it in Settings.")
       }
+      const { ChatOpenAI } = await import("@langchain/openai")
       return new ChatOpenAI({
         model: userSettings.openrouter_model,
         apiKey: userSettings.openrouter_api_key,
@@ -153,7 +155,8 @@ app.post("/chat", requireAuth, async (c) => {
       .join("\n\n---\n\n")
 
     // ── BYOK: Create model with user's own key ──
-    const model = createModel(userSettings)
+    // (Lazy-imports @langchain/* — first request may be slow but won't block cold start)
+    const model = await createModel(userSettings)
 
     const prompt = SYSTEM_PROMPT.replace("{notes}", formattedNotes).replace(
       "{question}",

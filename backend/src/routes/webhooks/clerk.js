@@ -22,7 +22,7 @@ app.post("/clerk", async (c) => {
     const rawBody = await c.req.arrayBuffer()
     const payload = Buffer.from(rawBody)
 
-    const evt = verifyWebhookSignature(payload, {
+    const evt = await verifyWebhookSignature(payload, {
       "svix-id": svixId,
       "svix-timestamp": svixTimestamp,
       "svix-signature": svixSignature,
