@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import ZenEditor from "@/components/editor/ZenEditor";
+import { fetchWithRetry } from "@/lib/api";
 
 export default function CreateMenu() {
     const [title, setTitle] = useState("");
@@ -34,7 +35,7 @@ export default function CreateMenu() {
         const timeout = setTimeout(() => controller.abort(), 10_000);
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`, {
+            const res = await fetchWithRetry(`${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

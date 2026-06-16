@@ -9,6 +9,7 @@ import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Settings, Key, Cpu, Eye, EyeOff, Check, Loader2 } from "lucide-react";
+import { fetchWithRetry } from "@/lib/api";
 
 type SettingsData = {
   ai_provider: string;
@@ -73,7 +74,7 @@ export default function SettingsPage() {
   async function fetchSettings() {
     try {
       const token = await getToken();
-      const res = await fetch(
+      const res = await fetchWithRetry(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/settings`,
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -124,7 +125,7 @@ export default function SettingsPage() {
         }
       }
 
-      const res = await fetch(
+      const res = await fetchWithRetry(
         `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/settings`,
         {
           method: "POST",

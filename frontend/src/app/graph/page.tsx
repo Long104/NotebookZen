@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import Navbar from "@/components/Navbar";
 import GraphView from "@/components/graph/GraphView";
 import { buildGraph, type GraphData } from "@/lib/graph";
+import { fetchWithRetry } from "@/lib/api";
 
 function GraphPageContent() {
     const { getToken } = useAuth();
@@ -27,7 +28,7 @@ function GraphPageContent() {
         const fetchNotes = async () => {
             try {
                 const token = await getToken();
-                const response = await fetch(
+                const response = await fetchWithRetry(
                     `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
                     {
                         cache: "no-store",

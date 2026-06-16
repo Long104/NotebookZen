@@ -8,6 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { fetchWithRetry } from "@/lib/api";
 
 type Source = {
     id: number;
@@ -75,7 +76,7 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
             setIsLoading(true);
 
             try {
-                const response = await fetch(
+                const response = await fetchWithRetry(
                     `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/chat`,
                     {
                         method: "POST",

@@ -9,6 +9,7 @@ import Navbar from "@/components/Navbar";
 import ZenEditor from "@/components/editor/ZenEditor";
 import MarkdownRenderer from "@/components/editor/MarkdownRenderer";
 import { ArrowLeft, Pencil, Trash2, Check, X } from "lucide-react";
+import { fetchWithRetry } from "@/lib/api";
 
 type Note = {
     id: number;
@@ -49,7 +50,7 @@ function RealShowListContent() {
                     return;
                 }
 
-                const response = await fetch(
+                const response = await fetchWithRetry(
                     `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
                     {
                         signal: abortController.signal,
@@ -112,7 +113,7 @@ function RealShowListContent() {
             return;
         }
         try {
-            const response = await fetch(
+            const response = await fetchWithRetry(
                 `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
                 {
                     method: "PUT",
@@ -149,7 +150,7 @@ function RealShowListContent() {
             return;
         }
         try {
-            const response = await fetch(
+            const response = await fetchWithRetry(
                 `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
                 {
                     method: "DELETE",
