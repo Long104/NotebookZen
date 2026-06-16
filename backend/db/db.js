@@ -3,14 +3,18 @@ import { drizzle } from "drizzle-orm/node-postgres"
 import * as schema from "./schema.js"
 
 /**
- * Creates a fresh Drizzle ORM client per request via Hyperdrive.
+ * Returns a singleton Drizzle ORM client backed by a single pg.Pool.
  *
- * Workers are stateless — they can't maintain TCP connections
- * between requests. Hyperdrive makes this cheap: the connection
- * from Worker → Hyperdrive is internal (~1ms), and Hyperdrive
- * maintains the persistent pool to Postgres.
+ * In Cloudflare Workers, module-level state lives as long as the isolate.
+ * Hyperdrive connection strings are stable, so the Pool can be created
+ * once and reused across requests. This avoids leaking TCP connections
+ * (which would exhaust the Postgres connection limit).
  */
+let pool = null
+
 export function getDb(hyperdrive) {
-  const pool = new Pool({ connectionString: hyperdrive.connectionString })
+  if (!pool) {
+    pool = new Pool({ connectionString: hyperdrive.connectionString })
+  }
   return drizzle(pool, { schema })
 }

@@ -10,11 +10,14 @@ export default function CreateMenu() {
     const [title, setTitle] = useState("");
     const [content, setContent] = useState("");
     const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
     const { getToken } = useAuth();
     const router = useRouter();
 
     async function createZenNote(e: React.FormEvent) {
         e.preventDefault();
+        setError("");
+
         const token = await getToken();
         if (!token) {
             setError("You must be signed in to create a note.");
@@ -24,24 +27,42 @@ export default function CreateMenu() {
             setError("Title is required.");
             return;
         }
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ title, content }),
-        });
 
-        if (!res.ok) {
-            const data = await res.json().catch(() => null);
-            setError(data?.detail || `Request failed with status ${res.status}`);
-            return;
+        setLoading(true);
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ title, content }),
+                signal: controller.signal,
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                setError(data?.detail || `Request failed with status ${res.status}`);
+                return;
+            }
+
+            setTitle("");
+            setContent("");
+            router.push("/realShowList");
+        } catch (err) {
+            if (err instanceof DOMException && err.name === "AbortError") {
+                setError("Request timed out. Database connection may be exhausted. Try again.");
+            } else {
+                setError("Network error. Please check your connection and try again.");
+            }
+        } finally {
+            clearTimeout(timeout);
+            setLoading(false);
         }
-
-        setTitle("");
-        setContent("");
-        router.push("/realShowList");
     }
 
     return (
@@ -71,9 +92,13 @@ export default function CreateMenu() {
                 </div>
 
                 <div className="flex gap-3 justify-center pt-4">
-                    <button type="submit" className="zen-btn-primary flex items-center gap-2">
-                        <StickyNote size={16} />
-                        Save Note
+                    <button type="submit" disabled={loading} className="zen-btn-primary flex items-center gap-2">
+                        {loading ? (
+                            <span className="animate-spin inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                        ) : (
+                            <StickyNote size={16} />
+                        )}
+                        {loading ? "Saving..." : "Save Note"}
                     </button>
                     <button
                         type="button"
