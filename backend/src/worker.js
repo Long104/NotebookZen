@@ -55,9 +55,15 @@ app.use("*", async (c, next) => {
 
 // ─── Global error handler ──────────────────────────────────────────────────
 // Catches unhandled exceptions (e.g. DB connection failure) and returns a
-// proper JSON 500 so the CORS middleware can still set headers on it.
+// proper JSON 500 with CORS headers so the browser can read the error.
 app.onError((err, c) => {
   console.error("Unhandled error:", err?.message, err?.stack)
+  // Ensure CORS headers are on error responses — Hono's CORS middleware sets
+  // them before await next(), but onError replaces c.res, potentially losing
+  // them. Setting them here guarantees the browser can read the error.
+  const allowedOrigin = process.env.FRONTEND_URL || "*"
+  c.header("Access-Control-Allow-Origin", allowedOrigin)
+  c.header("Access-Control-Allow-Credentials", "true")
   return c.json({ error: "Internal server error" }, 500)
 })
 
@@ -289,6 +295,12 @@ app.delete("/notes", async (c) => {
     return c.json({ error: "Unauthorized" }, 403)
   }
 
+  // Delete noteLinks first (both directions) — safety net even if FK cascade
+  // isn't properly set up on the actual Supabase database. Prevents FK violation.
+  await db.delete(noteLinks).where(eq(noteLinks.sourceNoteId, id))
+  await db.delete(noteLinks).where(eq(noteLinks.targetNoteId, id))
+
+  // Delete the note itself
   await db.delete(notes).where(eq(notes.id, id))
 
   return c.json({ message: "delete data", data: { id } })
