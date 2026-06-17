@@ -16,6 +16,9 @@ resource "neon_project" "notebookzen" {
   region_id  = var.neon_region
   pg_version = 16
 
+  # Free tier max is 21600 (6 hours). Removing default 86400.
+  history_retention = 21600
+
   # Configure the default branch endpoint for free-tier responsiveness
   # suspend_timeout = 0  → always-on (free tier auto-suspends after 5 min anyway)
   branch = {
