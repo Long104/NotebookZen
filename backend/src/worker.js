@@ -188,6 +188,8 @@ app.get("/notes/:id", async (c) => {
 })
 
 // POST /notes  – create note for the authenticated user
+// Non-critical work (wikilinks, embeddings) deferred to background via
+// ctx.waitUntil() to minimize DB pool pressure and prevent Worker hangs.
 app.post("/notes", async (c) => {
   const ctx = await getDb(c.env.HYPERDRIVE)
   const { db, eq, sql, notes } = ctx
@@ -201,22 +203,32 @@ app.post("/notes", async (c) => {
     .values({ title, content, userId })
     .returning()
 
-  await syncNoteLinks(ctx, newNote.id, content || "", userId)
-
-  try {
-    const vector = await embedNote(c.env.AI, title, content || "")
-    if (vector) {
-      const vecStr = `[${vector.join(",")}]`
-      await db.execute(sql`UPDATE "Note" SET embedding = ${vecStr}::vector WHERE id = ${newNote.id}`)
-    }
-  } catch (e) {
-    console.error("Embedding failed (non-fatal):", e?.message)
-  }
+  // Defer non-critical work — user gets immediate response, background
+  // tasks finish within seconds. If they fail, note still exists.
+  c.executionCtx.waitUntil(
+    (async () => {
+      try {
+        await syncNoteLinks(ctx, newNote.id, content || "", userId)
+      } catch (e) {
+        console.error("syncNoteLinks (bg) failed:", e?.message)
+      }
+      try {
+        const vector = await embedNote(c.env.AI, title, content || "")
+        if (vector) {
+          const vecStr = `[${vector.join(",")}]`
+          await db.execute(sql`UPDATE "Note" SET embedding = ${vecStr}::vector WHERE id = ${newNote.id}`)
+        }
+      } catch (e) {
+        console.error("Embedding (bg) failed:", e?.message)
+      }
+    })()
+  )
 
   return c.json({ message: "Create Success!", data: newNote })
 })
 
 // PUT /notes  – update note (must belong to caller)
+// Wikilinks + embeddings deferred to background.
 app.put("/notes", async (c) => {
   const ctx = await getDb(c.env.HYPERDRIVE)
   const { db, eq, sql, notes } = ctx
@@ -241,25 +253,38 @@ app.put("/notes", async (c) => {
     .where(eq(notes.id, id))
     .returning()
 
-  await syncNoteLinks(ctx, id, content || "", userId)
-
-  try {
-    const vector = await embedNote(c.env.AI, title, content || "")
-    if (vector) {
-      const vecStr = `[${vector.join(",")}]`
-      await db.execute(sql`UPDATE "Note" SET embedding = ${vecStr}::vector WHERE id = ${id}`)
-    }
-  } catch (e) {
-    console.error("Embedding failed (non-fatal):", e?.message)
-  }
+  // Defer non-critical work
+  c.executionCtx.waitUntil(
+    (async () => {
+      try {
+        await syncNoteLinks(ctx, id, content || "", userId)
+      } catch (e) {
+        console.error("syncNoteLinks (bg) failed:", e?.message)
+      }
+      try {
+        const vector = await embedNote(c.env.AI, title, content || "")
+        if (vector) {
+          const vecStr = `[${vector.join(",")}]`
+          await db.execute(sql`UPDATE "Note" SET embedding = ${vecStr}::vector WHERE id = ${id}`)
+        }
+      } catch (e) {
+        console.error("Embedding (bg) failed:", e?.message)
+      }
+    })()
+  )
 
   return c.json({ message: "Update success", data: updatedNote })
 })
 
 // DELETE /notes  – delete note (must belong to caller)
+// noteLinks cleanup is automatic — schema has onDelete: CASCADE on both
+// sourceNoteId and targetNoteId foreign keys.
+// Single-query delete: WHERE id = ? AND userId = ? ensures ownership
+// without a separate SELECT. If the note doesn't belong to the caller,
+// the WHERE matches nothing and we return 404.
 app.delete("/notes", async (c) => {
   const ctx = await getDb(c.env.HYPERDRIVE)
-  const { db, eq, notes, noteLinks } = ctx
+  const { db, eq, and, notes } = ctx
   const userId = await getUserId(ctx, c.get("userId"))
   if (!userId) return c.json({ error: "User not found" }, 404)
 
@@ -270,21 +295,13 @@ app.delete("/notes", async (c) => {
     return c.json({ error: "Note ID is required" }, 400)
   }
 
-  const [note] = await db
-    .select({ id: notes.id, userId: notes.userId })
-    .from(notes)
-    .where(eq(notes.id, id))
-    .limit(1)
+  // Single atomic operation: delete only if id AND userId match
+  const [deleted] = await db
+    .delete(notes)
+    .where(and(eq(notes.id, id), eq(notes.userId, userId)))
+    .returning({ id: notes.id })
 
-  if (!note) return c.json({ error: "Note not found" }, 404)
-
-  if (note.userId !== userId) {
-    return c.json({ error: "Unauthorized" }, 403)
-  }
-
-  await db.delete(noteLinks).where(eq(noteLinks.sourceNoteId, id))
-  await db.delete(noteLinks).where(eq(noteLinks.targetNoteId, id))
-  await db.delete(notes).where(eq(notes.id, id))
+  if (!deleted) return c.json({ error: "Note not found" }, 404)
 
   return c.json({ message: "delete data", data: { id } })
 })
