@@ -10,9 +10,6 @@ import type { Note } from "@/lib/types"
 
 const PENDING_NOTES_KEY = "notebookzen:pending_notes"
 
-/** Max age for unconfirmed pending notes (negative IDs) in milliseconds. */
-const MAX_PENDING_AGE_MS = 60_000
-
 export function addPendingNote(note: Omit<Note, "id"> & { id: number }) {
   const pending = getPendingNotes()
   localStorage.setItem(PENDING_NOTES_KEY, JSON.stringify([note, ...pending]))
@@ -34,15 +31,7 @@ export function getPendingNotes(): Note[] {
     if (!Array.isArray(parsed)) return []
 
     return parsed
-      .filter((note) => {
-        if (!note || !note.id || !note.title || !note.createdAt) return false
-        // Pending notes use -Date.now() as temp IDs. If a note with a
-        // negative ID hasn't been confirmed by the server within 60 seconds,
-        // it's stale (backend was down, note was never persisted).
-        // Clean it up to prevent ghost notes and failed DELETE requests.
-        if (note.id < 0 && -note.id < Date.now() - MAX_PENDING_AGE_MS) return false
-        return true
-      })
+      .filter((note) => note && note.id && note.title && note.createdAt)
       .map((note) => ({
         ...note,
         content: note.content || "",
