@@ -7,8 +7,13 @@
  * Returns a context object with everything handlers need:
  *   { db, pool, eq, desc, sql, inArray, and, users, notes, noteLinks, settings }
  *
- * This keeps the Worker's module scope to just hono + cors (~2ms CPU),
- * leaving ~8ms of the free plan's 10ms budget for the actual request.
+ * Pool configuration tuned to prevent Worker hangs:
+ *   - connectionTimeoutMillis: fail fast (3s) instead of hanging forever
+ *     when Hyperdrive/Supabase pool is exhausted. Hono's error handler
+ *     catches the timeout → returns 500 WITH CORS headers → browser can
+ *     read the error → fetchWithRetry can retry.
+ *   - idleTimeoutMillis: aggressively close idle connections to free pool.
+ *   - max: keep pool small (3) to avoid overwhelming upstream.
  */
 
 let cache = null
@@ -24,7 +29,23 @@ export async function getDb(hyperdrive) {
     import("./schema.js"),
   ])
 
-  const pool = new Pool({ connectionString: hyperdrive.connectionString })
+  const pool = new Pool({
+    connectionString: hyperdrive.connectionString,
+    // Fail fast instead of hanging — prevents Cloudflare "Worker hung" kills
+    connectionTimeoutMillis: 3000,
+    // Aggressively reclaim idle connections
+    idleTimeoutMillis: 5000,
+    // Small pool — Hyperdrive manages upstream, we just need local sockets
+    max: 3,
+  })
+
+  // If the pool errors (e.g., connection dies), clear the cache so the
+  // next request creates a fresh pool instead of reusing a broken one.
+  pool.on("error", (err) => {
+    console.error("PG pool error:", err?.message)
+    cache = null
+  })
+
   const db = drizzle(pool, { schema })
 
   cache = {
