@@ -41,13 +41,13 @@ export default function Navbar() {
                         <MessageSquare size={16} />
                     </button>
                     {!isSignedIn && (
-                        <SignInButton mode="modal" redirectTo="/dashboard">
+                        <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
                             <button className="zen-btn-primary text-xs">
                                 Sign In
                             </button>
                         </SignInButton>
                     )}
-                    {isSignedIn && <UserButton afterSignOutUrl="/" />}
+                    {isSignedIn && <UserButton />}
                 </div>
             </nav>
         </div>

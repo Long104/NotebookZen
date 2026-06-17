@@ -49,7 +49,6 @@ export default function ZenEditor({
             }),
         ],
         content: initialContent,
-        contentType: "markdown",
         editorProps: {
             attributes: {
                 class: "tiptap focus:outline-none",
@@ -57,7 +56,8 @@ export default function ZenEditor({
         },
         onUpdate: ({ editor: e }) => {
             if (onUpdate) {
-                onUpdate(e.storage.markdown.getMarkdown());
+                const md = (e.storage as { markdown?: { getMarkdown: () => string } }).markdown?.getMarkdown();
+                if (md) onUpdate(md);
             }
         },
         immediatelyRender: false,

@@ -10,7 +10,6 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
-    "@clerk/backend": "^3.2.3",
     "@langchain/core": "^1.1.39",
     "@langchain/google-genai": "^2.1.26",
     "@langchain/openai": "^1.4.3",

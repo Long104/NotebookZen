@@ -2,10 +2,9 @@
 
 import { StickyNote, X } from "lucide-react";
 import { useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import ZenEditor from "@/components/editor/ZenEditor";
-import { fetchWithRetry } from "@/lib/api";
+import { useApi } from "@/lib/api";
 import { addPendingNote, removePendingNote } from "@/lib/pendingNotes";
 
 export default function CreateMenu() {
@@ -13,18 +12,13 @@ export default function CreateMenu() {
     const [content, setContent] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
-    const { getToken } = useAuth();
+    const api = useApi();
     const router = useRouter();
 
     async function createZenNote(e: React.FormEvent) {
         e.preventDefault();
         setError("");
 
-        const token = await getToken();
-        if (!token) {
-            setError("You must be signed in to create a note.");
-            return;
-        }
         if (!title) {
             setError("Title is required.");
             return;
@@ -46,12 +40,9 @@ export default function CreateMenu() {
         const timeout = setTimeout(() => controller.abort(), 10_000);
 
         try {
-            const res = await fetchWithRetry(`${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`, {
+            const res = await api("/notes", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ title, content }),
                 signal: controller.signal,
             });

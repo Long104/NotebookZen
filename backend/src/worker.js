@@ -6,6 +6,7 @@ import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { getDb } from "../db/db.js"
 import { requireAuth } from "./middleware/auth.js"
+import { getUserId } from "./lib/db.js"
 import { syncNoteLinks } from "./lib/wikilinks.js"
 import { embedNote } from "./lib/embeddings.js"
 import chatRoutes from "./routes/chat.js"
@@ -78,21 +79,15 @@ app.use("/api/settings/*", requireAuth)
 
 // GET /notes  – list all notes for the authenticated user
 app.get("/notes", async (c) => {
-  const { db, eq, desc, users, notes } = await getDb(c.env.HYPERDRIVE)
-  const clerkId = c.get("userId")
-
-  const [user] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1)
-
-  if (!user) return c.json([])
+  const ctx = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, desc, notes } = ctx
+  const userId = await getUserId(ctx, c.get("userId"))
+  if (!userId) return c.json([])
 
   const result = await db
     .select()
     .from(notes)
-    .where(eq(notes.userId, user.id))
+    .where(eq(notes.userId, userId))
     .orderBy(desc(notes.createdAt))
 
   return c.json(result)
@@ -101,21 +96,15 @@ app.get("/notes", async (c) => {
 // GET /notes/graph – full graph { nodes, links } from persisted note_links
 // MUST be registered before /notes/:id so :id doesn't catch "graph"
 app.get("/notes/graph", async (c) => {
-  const { db, eq, users, notes, noteLinks } = await getDb(c.env.HYPERDRIVE)
-  const clerkId = c.get("userId")
-
-  const [user] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1)
-
-  if (!user) return c.json({ nodes: [], links: [] })
+  const ctx = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, notes, noteLinks } = ctx
+  const userId = await getUserId(ctx, c.get("userId"))
+  if (!userId) return c.json({ nodes: [], links: [] })
 
   const userNotes = await db
     .select()
     .from(notes)
-    .where(eq(notes.userId, user.id))
+    .where(eq(notes.userId, userId))
 
   const rawLinks = await db
     .select({
@@ -124,7 +113,7 @@ app.get("/notes/graph", async (c) => {
     })
     .from(noteLinks)
     .innerJoin(notes, eq(noteLinks.sourceNoteId, notes.id))
-    .where(eq(notes.userId, user.id))
+    .where(eq(notes.userId, userId))
 
   const degree = new Map()
   for (const link of rawLinks) {
@@ -176,42 +165,43 @@ app.get("/notes/:id/neighbors", async (c) => {
   return c.json(neighborNotes)
 })
 
-// GET /notes/:id  – single note
+// GET /notes/:id  – single note (must belong to caller)
 app.get("/notes/:id", async (c) => {
   const id = Number(c.req.param("id"))
   if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
 
-  const { db, eq, notes } = await getDb(c.env.HYPERDRIVE)
+  const ctx = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, notes } = ctx
+  const userId = await getUserId(ctx, c.get("userId"))
+  if (!userId) return c.json({ error: "User not found" }, 404)
+
   const [note] = await db
     .select()
     .from(notes)
     .where(eq(notes.id, id))
     .limit(1)
 
-  return c.json(note || {})
+  if (!note) return c.json({ error: "Note not found" }, 404)
+  if (note.userId !== userId) return c.json({ error: "Unauthorized" }, 403)
+
+  return c.json(note)
 })
 
 // POST /notes  – create note for the authenticated user
 app.post("/notes", async (c) => {
   const ctx = await getDb(c.env.HYPERDRIVE)
-  const { db, eq, sql, users, notes } = ctx
-  const clerkId = c.get("userId")
+  const { db, eq, sql, notes } = ctx
+  const userId = await getUserId(ctx, c.get("userId"))
   const { title, content } = await c.req.json()
 
-  const [user] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1)
-
-  if (!user) return c.json({ error: "User not found" }, 404)
+  if (!userId) return c.json({ error: "User not found" }, 404)
 
   const [newNote] = await db
     .insert(notes)
-    .values({ title, content, userId: user.id })
+    .values({ title, content, userId })
     .returning()
 
-  await syncNoteLinks(ctx, newNote.id, content || "", user.id)
+  await syncNoteLinks(ctx, newNote.id, content || "", userId)
 
   try {
     const vector = await embedNote(c.env.AI, title, content || "")
@@ -226,11 +216,24 @@ app.post("/notes", async (c) => {
   return c.json({ message: "Create Success!", data: newNote })
 })
 
-// PUT /notes  – update note
+// PUT /notes  – update note (must belong to caller)
 app.put("/notes", async (c) => {
   const ctx = await getDb(c.env.HYPERDRIVE)
   const { db, eq, sql, notes } = ctx
   const { id, title, content } = await c.req.json()
+
+  const userId = await getUserId(ctx, c.get("userId"))
+  if (!userId) return c.json({ error: "User not found" }, 404)
+
+  // Ownership check — prevents IDOR
+  const [existing] = await db
+    .select({ userId: notes.userId })
+    .from(notes)
+    .where(eq(notes.id, id))
+    .limit(1)
+
+  if (!existing) return c.json({ error: "Note not found" }, 404)
+  if (existing.userId !== userId) return c.json({ error: "Unauthorized" }, 403)
 
   const [updatedNote] = await db
     .update(notes)
@@ -238,7 +241,7 @@ app.put("/notes", async (c) => {
     .where(eq(notes.id, id))
     .returning()
 
-  await syncNoteLinks(ctx, id, content || "", updatedNote.userId)
+  await syncNoteLinks(ctx, id, content || "", userId)
 
   try {
     const vector = await embedNote(c.env.AI, title, content || "")
@@ -253,18 +256,12 @@ app.put("/notes", async (c) => {
   return c.json({ message: "Update success", data: updatedNote })
 })
 
-// DELETE /notes  – delete note (must belong to current user)
+// DELETE /notes  – delete note (must belong to caller)
 app.delete("/notes", async (c) => {
-  const { db, eq, users, notes, noteLinks } = await getDb(c.env.HYPERDRIVE)
-  const clerkId = c.get("userId")
-
-  const [user] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.clerkId, clerkId))
-    .limit(1)
-
-  if (!user) return c.json({ error: "User not found" }, 404)
+  const ctx = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, notes, noteLinks } = ctx
+  const userId = await getUserId(ctx, c.get("userId"))
+  if (!userId) return c.json({ error: "User not found" }, 404)
 
   const body = await c.req.json().catch(() => ({}))
   const { id } = body
@@ -281,7 +278,7 @@ app.delete("/notes", async (c) => {
 
   if (!note) return c.json({ error: "Note not found" }, 404)
 
-  if (note.userId !== user.id) {
+  if (note.userId !== userId) {
     return c.json({ error: "Unauthorized" }, 403)
   }
 

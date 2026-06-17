@@ -35,10 +35,8 @@ app.post("/clerk", async (c) => {
 
     switch (eventType) {
       case "user.created":
-        await handleUserCreated(ctx, data)
-        break
       case "user.updated":
-        await handleUserUpdated(ctx, data)
+        await upsertUser(ctx, data)
         break
       case "user.deleted":
         await handleUserDeleted(ctx, data)
@@ -56,37 +54,7 @@ app.post("/clerk", async (c) => {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-async function handleUserCreated(ctx, data) {
-  const { db, users } = ctx
-  const { id, username, email_addresses, primary_email_address_id } = data
-
-  const primaryEmail = email_addresses.find(
-    (email) => email.id === primary_email_address_id,
-  )
-  const emailAddress = primaryEmail
-    ? primaryEmail.email_address
-    : email_addresses[0].email_address
-
-  const sanitizedUsername = sanitizeUsername(username, emailAddress)
-
-  const [user] = await db
-    .insert(users)
-    .values({
-      clerkId: id,
-      username: sanitizedUsername,
-      email: emailAddress,
-    })
-    .onConflictDoUpdate({
-      target: users.clerkId,
-      set: { username: sanitizedUsername, email: emailAddress },
-    })
-    .returning()
-
-  console.log("User upserted:", user)
-  return user
-}
-
-async function handleUserUpdated(ctx, data) {
+async function upsertUser(ctx, data) {
   const { db, users } = ctx
   const { id, username, email_addresses, primary_email_address_id } = data
 

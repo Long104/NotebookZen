@@ -29,19 +29,19 @@ import Link from "next/link";
 const fadeUp = (delay = 0) => ({
     initial: { opacity: 0, y: 16 },
     animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.6, delay, ease: "easeOut" },
+    transition: { duration: 0.6, delay, ease: "easeOut" as const },
 });
 
 const fadeUpBadge = {
     initial: { opacity: 0, y: 10 },
     animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.5, ease: "easeOut" },
+    transition: { duration: 0.5, ease: "easeOut" as const },
 };
 
 const fadeUpSlow = {
     initial: { opacity: 0, y: 30 },
     animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.8, delay: 0.5, ease: "easeOut" },
+    transition: { duration: 0.8, delay: 0.5, ease: "easeOut" as const },
 };
 
 export default function LandingPage() {

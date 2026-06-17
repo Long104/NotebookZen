@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { getDb } from "../../db/db.js"
 import { requireAuth } from "../middleware/auth.js"
+import { getUserId } from "../lib/db.js"
 
 const app = new Hono()
 
@@ -23,16 +24,11 @@ function maskValue(value) {
 
 app.get("/", requireAuth, async (c) => {
   try {
-    const clerkId = c.get("userId")
-    const { db, eq, and, inArray, users, settings: settingsTable } = await getDb(c.env.HYPERDRIVE)
+    const ctx = await getDb(c.env.HYPERDRIVE)
+    const { db, eq, and, inArray, settings: settingsTable } = ctx
+    const userId = await getUserId(ctx, c.get("userId"))
 
-    const [user] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.clerkId, clerkId))
-      .limit(1)
-
-    if (!user) {
+    if (!userId) {
       return c.json({ error: "User not found" }, 404)
     }
 
@@ -41,7 +37,7 @@ app.get("/", requireAuth, async (c) => {
       .from(settingsTable)
       .where(
         and(
-          eq(settingsTable.userId, user.id),
+          eq(settingsTable.userId, userId),
           inArray(settingsTable.key, AI_SETTING_KEYS),
         ),
       )
@@ -78,7 +74,6 @@ app.get("/", requireAuth, async (c) => {
 
 app.post("/", requireAuth, async (c) => {
   try {
-    const clerkId = c.get("userId")
     const body = await c.req.json()
     const { settings } = body
 
@@ -86,15 +81,11 @@ app.post("/", requireAuth, async (c) => {
       return c.json({ error: "settings object is required" }, 400)
     }
 
-    const { db, eq, users, settings: settingsTable } = await getDb(c.env.HYPERDRIVE)
+    const ctx = await getDb(c.env.HYPERDRIVE)
+    const { db, eq, settings: settingsTable } = ctx
+    const userId = await getUserId(ctx, c.get("userId"))
 
-    const [user] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.clerkId, clerkId))
-      .limit(1)
-
-    if (!user) {
+    if (!userId) {
       return c.json({ error: "User not found" }, 404)
     }
 
@@ -116,7 +107,7 @@ app.post("/", requireAuth, async (c) => {
 
       await db
         .insert(settingsTable)
-        .values({ userId: user.id, key, value: String(value) })
+        .values({ userId, key, value: String(value) })
         .onConflictDoUpdate({
           target: [settingsTable.userId, settingsTable.key],
           set: { value: String(value) },

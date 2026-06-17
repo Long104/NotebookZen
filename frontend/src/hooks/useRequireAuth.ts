@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
  * returns `true` only when the user is confirmed signed in and safe to render.
  *
  * Replaces the copy-pasted `useUser()` + redirect effect that appeared in
- * every protected page. For edge-level protection see `src/middleware.ts`.
+ * every protected page. For edge-level protection see `src/proxy.ts`.
  *
  * NOTE: the landing page (`/`) uses inverse logic (redirect when *signed in*)
  * and therefore does NOT use this hook.

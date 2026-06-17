@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { getDb } from "../../db/db.js"
 import { requireAuth } from "../middleware/auth.js"
+import { getUserId } from "../lib/db.js"
 import { hybridRetrieve, fallbackRetrieve } from "../lib/retrieval.js"
 
 const app = new Hono()
@@ -97,40 +98,32 @@ async function createModel(userSettings) {
 app.post("/chat", requireAuth, async (c) => {
   try {
     const { question } = await c.req.json()
-    const clerkId = c.get("userId")
 
     if (!question || !question.trim()) {
       return c.json({ error: "Question is required" }, 400)
     }
 
     const ctx = await getDb(c.env.HYPERDRIVE)
-    const { db, eq, users } = ctx
+    const userId = await getUserId(ctx, c.get("userId"))
 
-    // Resolve clerkId → user
-    const [user] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.clerkId, clerkId))
-      .limit(1)
-
-    if (!user) {
+    if (!userId) {
       return c.json({ error: "User not found" }, 404)
     }
 
     // ── BYOK: Load per-user AI settings ──
-    const userSettings = await getUserAISettings(ctx, user.id)
+    const userSettings = await getUserAISettings(ctx, userId)
 
     // ── Hybrid retrieval (Rovo-style) ──────────────────────────────────
     let contextNotes
     let retrievalMode
 
-    const hybrid = await hybridRetrieve(ctx, c.env.AI, question, user.id)
+    const hybrid = await hybridRetrieve(ctx, c.env.AI, question, userId)
 
     if (hybrid.source === "hybrid" && hybrid.notes.length > 0) {
       contextNotes = hybrid.notes
       retrievalMode = "hybrid"
     } else {
-      const fallback = await fallbackRetrieve(ctx, user.id)
+      const fallback = await fallbackRetrieve(ctx, userId)
       contextNotes = fallback.notes
       retrievalMode = "fallback"
     }

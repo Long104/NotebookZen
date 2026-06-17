@@ -19,7 +19,6 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
             }),
         ],
         content: content || "",
-        contentType: "markdown",
         editable: false,
         editorProps: {
             attributes: {
