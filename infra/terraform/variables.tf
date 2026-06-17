@@ -27,29 +27,6 @@ variable "cloudflare_frontend_subdomain" {
   default     = "notebookzen"
 }
 
-variable "supabase_organization_id" {
-  description = "Supabase organization slug (found in dashboard URL: https://supabase.com/dashboard/org/<slug>)"
-  type        = string
-}
-
-variable "supabase_access_token" {
-  description = "Supabase access token (from https://supabase.com/dashboard/account/tokens)"
-  type        = string
-  sensitive   = true
-}
-
-variable "supabase_db_password" {
-  description = "Password for the Supabase PostgreSQL database"
-  type        = string
-  sensitive   = true
-}
-
-variable "supabase_region" {
-  description = "Supabase project region"
-  type        = string
-  default     = "ap-southeast-1"
-}
-
 variable "vercel_api_token" {
   description = "Vercel API token"
   type        = string

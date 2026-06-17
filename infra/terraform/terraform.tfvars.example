@@ -4,10 +4,6 @@ cloudflare_zone_id           = ""
 cloudflare_zone_name         = ""
 cloudflare_backend_subdomain = "api"
 
-supabase_access_token        = "sbp_xxxxxxxx"
-supabase_db_password         = "your-secure-password"
-supabase_region              = "ap-southeast-1"
-
 vercel_api_token             = "xxxxxxxxxxxx"
 vercel_team_id               = ""
 
