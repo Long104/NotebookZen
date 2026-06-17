@@ -134,7 +134,7 @@ app.get("/notes/graph", async (c) => {
 // GET /notes/:id/neighbors – 1-hop neighbor notes (bidirectional)
 app.get("/notes/:id/neighbors", async (c) => {
   const id = Number(c.req.param("id"))
-  if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
+  if (!Number.isInteger(id) || id < 1 || id > 2147483647) return c.json({ error: "Invalid ID" }, 400)
 
   const { db, eq, inArray, notes, noteLinks } = await getDb(c.env.DATABASE_URL)
 
@@ -168,7 +168,7 @@ app.get("/notes/:id/neighbors", async (c) => {
 // GET /notes/:id  – single note (must belong to caller)
 app.get("/notes/:id", async (c) => {
   const id = Number(c.req.param("id"))
-  if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
+  if (!Number.isInteger(id) || id < 1 || id > 2147483647) return c.json({ error: "Invalid ID" }, 400)
 
   const ctx = await getDb(c.env.DATABASE_URL)
   const { db, eq, notes } = ctx
@@ -292,14 +292,17 @@ app.delete("/notes", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const { id } = body
 
-  if (!id || isNaN(Number(id))) {
-    return c.json({ error: "Note ID is required" }, 400)
+  // Reject IDs outside serial (32-bit int) range — protects against
+  // frontend temp IDs (negative) or overflow values that crash the Neon query.
+  const noteId = Number(id)
+  if (!Number.isInteger(noteId) || noteId < 1 || noteId > 2147483647) {
+    return c.json({ error: "Invalid note ID" }, 400)
   }
 
   // Single atomic operation: delete only if id AND userId match
   const [deleted] = await db
     .delete(notes)
-    .where(and(eq(notes.id, id), eq(notes.userId, userId)))
+    .where(and(eq(notes.id, noteId), eq(notes.userId, userId)))
     .returning({ id: notes.id })
 
   if (!deleted) return c.json({ error: "Note not found" }, 404)
