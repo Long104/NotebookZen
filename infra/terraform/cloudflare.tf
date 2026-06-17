@@ -16,8 +16,16 @@ resource "cloudflare_workers_script" "backend" {
 
   module      = true
 
+  # Wrangler is the single source of truth for code AND bindings.
+  # ignore_changes covers ALL bindings so terraform apply never
+  # clobbers wrangler-set vars/secrets (FRONTEND_URL, Clerk, etc.).
   lifecycle {
-    ignore_changes = [content]
+    ignore_changes = [
+      content,
+      plain_text_binding,
+      secret_text_binding,
+      hyperdrive_config_binding,
+    ]
   }
 
   content = <<-EOT

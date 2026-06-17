@@ -18,11 +18,11 @@ resource "neon_project" "notebookzen" {
 
   # Configure the default branch endpoint for free-tier responsiveness
   # suspend_timeout = 0  → always-on (free tier auto-suspends after 5 min anyway)
-  branch {
-    endpoint {
-      min_cu           = 0.25
-      max_cu           = 0.25
-      suspend_timeout  = 0
+  branch = {
+    endpoint = {
+      min_cu          = 0.25
+      max_cu          = 0.25
+      suspend_timeout = 0
     }
   }
 }

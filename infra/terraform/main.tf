@@ -16,7 +16,7 @@ terraform {
     }
     neon = {
       source  = "terraform-community-providers/neon"
-      version = "~> 0.3"
+      version = "~> 0.1"
     }
   }
 }
@@ -35,5 +35,5 @@ provider "vercel" {
 }
 
 provider "neon" {
-  api_key = var.neon_api_key
+  token = var.neon_api_key
 }
