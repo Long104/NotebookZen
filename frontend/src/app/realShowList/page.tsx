@@ -1,28 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
-import { useAuth, useUser } from "@clerk/nextjs";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import Navbar from "@/components/Navbar";
 import ZenEditor from "@/components/editor/ZenEditor";
 import MarkdownRenderer from "@/components/editor/MarkdownRenderer";
 import { ArrowLeft, Pencil, Trash2, Check, X, Loader2 } from "lucide-react";
-import { fetchWithRetry } from "@/lib/api";
+import { useApi } from "@/lib/api";
 import { mergePendingWithFetched } from "@/lib/pendingNotes";
-
-export type Note = {
-    id: number;
-    title: string;
-    content?: string;
-    createdAt: string;
-};
+import { useRequireAuth } from "@/hooks/useRequireAuth";
+import type { Note } from "@/lib/types";
 
 function RealShowListContent() {
-    const { getToken } = useAuth();
-    const { isSignedIn, isLoaded } = useUser();
-    const router = useRouter();
+    const signedIn = useRequireAuth();
+    const api = useApi();
     const searchParams = useSearchParams();
 
     const [noteList, setNoteList] = useState<Note[]>(() => mergePendingWithFetched([]));
@@ -35,36 +28,16 @@ function RealShowListContent() {
     const [actionError, setActionError] = useState("");
 
     useEffect(() => {
-        if (isLoaded && !isSignedIn) {
-            router.push("/");
-        }
-    }, [isLoaded, isSignedIn, router]);
-
-    useEffect(() => {
-        // Don't fetch until Clerk has loaded
-        if (!isLoaded) return;
+        if (!signedIn) return;
 
         const abortController = new AbortController();
 
         const fetchData = async () => {
             try {
-                const token = await getToken();
-                if (!token) {
-                    console.warn("No auth token available yet — skipping fetch");
-                    return;
-                }
-
-                const response = await fetchWithRetry(
-                    `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
-                    {
-                        signal: abortController.signal,
-                        cache: "no-store",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                        },
-                    },
-                );
+                const response = await api("/notes", {
+                    signal: abortController.signal,
+                    cache: "no-store",
+                });
                 if (!response.ok) {
                     throw new Error(`Server returned ${response.status}`);
                 }
@@ -89,11 +62,9 @@ function RealShowListContent() {
         fetchData();
 
         return () => abortController.abort();
-    }, [isLoaded, getToken, searchParams]);
+    }, [signedIn, api, searchParams]);
 
-    if (!isLoaded || !isSignedIn) {
-        return null;
-    }
+    if (!signedIn) return null;
 
     function handleSelectedNote(note: Note) {
         setSelectedNote(note);
@@ -115,12 +86,6 @@ function RealShowListContent() {
         if (!selectedNote || isSaving) return;
         setActionError("");
 
-        const token = await getToken();
-        if (!token) {
-            console.error("No auth token available");
-            return;
-        }
-
         // Snapshot for rollback
         const prevNote = selectedNote;
 
@@ -133,21 +98,15 @@ function RealShowListContent() {
         setIsSaving(true);
 
         try {
-            const response = await fetchWithRetry(
-                `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
-                {
-                    method: "PUT",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        id: prevNote.id,
-                        title: editTitle,
-                        content: editContent,
-                    }),
-                },
-            );
+            const response = await api("/notes", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    id: prevNote.id,
+                    title: editTitle,
+                    content: editContent,
+                }),
+            });
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
             }
@@ -175,12 +134,6 @@ function RealShowListContent() {
         if (!selectedNote || isDeleting) return;
         setActionError("");
 
-        const token = await getToken();
-        if (!token) {
-            console.error("No auth token available");
-            return;
-        }
-
         // Snapshot for rollback
         const prevNote = selectedNote;
 
@@ -191,17 +144,11 @@ function RealShowListContent() {
         setIsDeleting(true);
 
         try {
-            const response = await fetchWithRetry(
-                `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
-                {
-                    method: "DELETE",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({ id: prevNote.id }),
-                },
-            );
+            const response = await api("/notes", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: prevNote.id }),
+            });
             if (!response.ok) {
                 throw new Error(`Server returned ${response.status}`);
             }

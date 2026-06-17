@@ -43,7 +43,11 @@ export function getPendingNotes(): Note[] {
 
 export function mergePendingWithFetched(notes: Note[]): Note[] {
   const pending = getPendingNotes()
-  const fetchedIds = new Set(notes.map((note) => note.id))
+  const pendingIds = new Set(pending.map((note) => note.id))
 
-  return [...pending, ...notes.filter((note) => !fetchedIds.has(note.id))]
+  // Show all fetched notes, plus pending notes whose ID isn't in fetched.
+  // Pending notes use negative temp IDs (-Date.now()), so they never
+  // collide with real DB IDs. Once the POST succeeds, removePendingNote()
+  // clears the temp entry and only the real note remains.
+  return [...pending, ...notes.filter((note) => !pendingIds.has(note.id))]
 }

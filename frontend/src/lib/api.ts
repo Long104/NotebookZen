@@ -1,3 +1,8 @@
+"use client"
+
+import { useCallback } from "react"
+import { useAuth } from "@clerk/nextjs"
+
 /**
  * fetchWithRetry — wraps fetch() with automatic retry on cold-start failures.
  *
@@ -49,3 +54,31 @@ export async function fetchWithRetry(
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+// ─── Authenticated API client ───────────────────────────────────────────────
+//
+// useApi() returns a stable `api()` function that:
+//   1. Fetches a fresh Clerk session token
+//   2. Builds the Authorization header
+//   3. Prefixes the backend base URL
+//   4. Delegates to fetchWithRetry (cold-start safe)
+//
+// Replaces the `getToken()` + auth-header + NEXT_PUBLIC_BACKEND_URL boilerplate
+// that was repeated across every page/component.
+
+const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? ""
+
+export function useApi() {
+  const { getToken } = useAuth()
+
+  return useCallback(
+    async (path: string, init?: RequestInit): Promise<Response> => {
+      const token = await getToken()
+      const headers = new Headers(init?.headers)
+      if (token) headers.set("Authorization", `Bearer ${token}`)
+      return fetchWithRetry(`${BASE_URL}${path}`, { ...init, headers })
+    },
+    [getToken],
+  )
+}
+

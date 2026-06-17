@@ -1,43 +1,26 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useAuth, useUser } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import Navbar from "@/components/Navbar";
 import GraphView from "@/components/graph/GraphView";
 import { buildGraph, type GraphData } from "@/lib/graph";
-import { fetchWithRetry } from "@/lib/api";
+import { useApi } from "@/lib/api";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 function GraphPageContent() {
-    const { getToken } = useAuth();
-    const { isSignedIn, isLoaded } = useUser();
-    const router = useRouter();
+    const signedIn = useRequireAuth();
+    const api = useApi();
     const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [error, setError] = useState(false);
 
     useEffect(() => {
-        if (isLoaded && !isSignedIn) {
-            router.push("/");
-        }
-    }, [isLoaded, isSignedIn, router]);
-
-    useEffect(() => {
-        if (!isSignedIn) return;
+        if (!signedIn) return;
         const fetchNotes = async () => {
             try {
-                const token = await getToken();
-                const response = await fetchWithRetry(
-                    `${process.env.NEXT_PUBLIC_BACKEND_URL}/notes`,
-                    {
-                        cache: "no-store",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                        },
-                    },
-                );
+                const response = await api("/notes", { cache: "no-store" });
                 if (!response.ok) throw new Error("fetch failed");
                 const notes = await response.json();
                 setGraphData(buildGraph(notes));
@@ -46,9 +29,9 @@ function GraphPageContent() {
             }
         };
         fetchNotes();
-    }, [isSignedIn, getToken]);
+    }, [signedIn, api]);
 
-    if (!isLoaded || !isSignedIn) return null;
+    if (!signedIn) return null;
 
     return (
         <SidebarProvider>

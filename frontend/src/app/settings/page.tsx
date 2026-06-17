@@ -1,15 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth, useUser } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Settings, Key, Cpu, Eye, EyeOff, Check, Loader2 } from "lucide-react";
-import { fetchWithRetry } from "@/lib/api";
+import { useApi } from "@/lib/api";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 
 type SettingsData = {
   ai_provider: string;
@@ -36,9 +35,8 @@ const GOOGLE_MODELS = [
 ];
 
 export default function SettingsPage() {
-  const { isSignedIn, isLoaded } = useUser();
-  const { getToken } = useAuth();
-  const router = useRouter();
+  const signedIn = useRequireAuth();
+  const api = useApi();
 
   const [settings, setSettings] = useState<SettingsData>({
     ai_provider: "openrouter",
@@ -60,26 +58,14 @@ export default function SettingsPage() {
   } | null>(null);
 
   useEffect(() => {
-    if (isLoaded && !isSignedIn) {
-      router.push("/");
-    }
-  }, [isLoaded, isSignedIn, router]);
-
-  useEffect(() => {
-    if (isSignedIn) {
+    if (signedIn) {
       fetchSettings();
     }
-  }, [isSignedIn]);
+  }, [signedIn]);
 
   async function fetchSettings() {
     try {
-      const token = await getToken();
-      const res = await fetchWithRetry(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/settings`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const res = await api("/api/settings");
 
       if (res.ok) {
         const data = await res.json();
@@ -105,8 +91,6 @@ export default function SettingsPage() {
     setMessage(null);
 
     try {
-      const token = await getToken();
-
       // Only send fields that the user actually changed
       const toSave: Record<string, string> = {
         ai_provider: settings.ai_provider,
@@ -125,17 +109,11 @@ export default function SettingsPage() {
         }
       }
 
-      const res = await fetchWithRetry(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/settings`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ settings: toSave }),
-        },
-      );
+      const res = await api("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: toSave }),
+      });
 
       if (res.ok) {
         setMessage({ type: "success", text: "Settings saved successfully!" });
@@ -159,7 +137,7 @@ export default function SettingsPage() {
     setSettings((prev) => ({ ...prev, [field]: value }));
   }
 
-  if (!isLoaded || !isSignedIn) return null;
+  if (!signedIn) return null;
 
   const models =
     settings.ai_provider === "openrouter" ? OPENROUTER_MODELS : GOOGLE_MODELS;

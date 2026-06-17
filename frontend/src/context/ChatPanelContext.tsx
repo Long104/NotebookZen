@@ -7,8 +7,7 @@ import {
     useCallback,
     type ReactNode,
 } from "react";
-import { useAuth } from "@clerk/nextjs";
-import { fetchWithRetry } from "@/lib/api";
+import { useApi } from "@/lib/api";
 
 type Source = {
     id: number;
@@ -46,7 +45,7 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
-    const { getToken } = useAuth();
+    const api = useApi();
 
     const togglePanel = useCallback(() => setIsOpen((prev) => !prev), []);
     const openPanel = useCallback(() => setIsOpen(true), []);
@@ -60,11 +59,6 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
     const sendMessage = useCallback(
         async (text: string) => {
             if (!text.trim() || isLoading) return;
-            const token = await getToken();
-            if (!token) {
-                setError("You must be signed in to use AI chat.");
-                return;
-            }
 
             const userMessage: Message = {
                 id: ++messageIdCounter,
@@ -76,17 +70,11 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
             setIsLoading(true);
 
             try {
-                const response = await fetchWithRetry(
-                    `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/chat`,
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                        },
-                        body: JSON.stringify({ question: userMessage.content }),
-                    },
-                );
+                const response = await api("/api/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question: userMessage.content }),
+                });
 
                 if (!response.ok) throw new Error("Failed to get response");
 
@@ -113,7 +101,7 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
                 setIsLoading(false);
             }
         },
-        [getToken, isLoading],
+        [api, isLoading],
     );
 
     return (
