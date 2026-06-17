@@ -23,3 +23,5 @@ openrouter_api_key           = "sk-or-xxxxxxxx"
 openrouter_model             = "google/gemini-2.0-flash-exp:free"
 google_api_key               = ""
 google_model                 = "gemini-2.0-flash"
+
+neon_api_key                 = "napi_xxxxxxxx"

@@ -14,6 +14,10 @@ terraform {
       source  = "vercel/vercel"
       version = "~> 2.0"
     }
+    neon = {
+      source  = "terraform-community-providers/neon"
+      version = "~> 0.3"
+    }
   }
 }
 
@@ -28,4 +32,8 @@ provider "supabase" {
 provider "vercel" {
   api_token = var.vercel_api_token
   team      = var.vercel_team_id
+}
+
+provider "neon" {
+  api_key = var.neon_api_key
 }

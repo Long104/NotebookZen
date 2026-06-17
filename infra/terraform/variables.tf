@@ -90,3 +90,17 @@ variable "clerk_webhook_secret" {
   type        = string
   sensitive   = true
 }
+
+// ─── Neon ───────────────────────────────────────────────────────────────────
+
+variable "neon_api_key" {
+  description = "Neon API key (from https://console.neon.tech/app/settings/api-keys)"
+  type        = string
+  sensitive   = true
+}
+
+variable "neon_region" {
+  description = "Neon region (AWS region ID). Singapore = closest to Thailand."
+  type        = string
+  default     = "aws-ap-southeast-1"
+}

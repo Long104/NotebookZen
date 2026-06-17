@@ -103,7 +103,7 @@ app.post("/chat", requireAuth, async (c) => {
       return c.json({ error: "Question is required" }, 400)
     }
 
-    const ctx = await getDb(c.env.HYPERDRIVE)
+    const ctx = await getDb(c.env.DATABASE_URL)
     const userId = await getUserId(ctx, c.get("userId"))
 
     if (!userId) {

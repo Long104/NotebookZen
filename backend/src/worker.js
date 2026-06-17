@@ -79,7 +79,7 @@ app.use("/api/settings/*", requireAuth)
 
 // GET /notes  – list all notes for the authenticated user
 app.get("/notes", async (c) => {
-  const ctx = await getDb(c.env.HYPERDRIVE)
+  const ctx = await getDb(c.env.DATABASE_URL)
   const { db, eq, desc, notes } = ctx
   const userId = await getUserId(ctx, c.get("userId"))
   if (!userId) return c.json([])
@@ -96,7 +96,7 @@ app.get("/notes", async (c) => {
 // GET /notes/graph – full graph { nodes, links } from persisted note_links
 // MUST be registered before /notes/:id so :id doesn't catch "graph"
 app.get("/notes/graph", async (c) => {
-  const ctx = await getDb(c.env.HYPERDRIVE)
+  const ctx = await getDb(c.env.DATABASE_URL)
   const { db, eq, notes, noteLinks } = ctx
   const userId = await getUserId(ctx, c.get("userId"))
   if (!userId) return c.json({ nodes: [], links: [] })
@@ -136,7 +136,7 @@ app.get("/notes/:id/neighbors", async (c) => {
   const id = Number(c.req.param("id"))
   if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
 
-  const { db, eq, inArray, notes, noteLinks } = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, inArray, notes, noteLinks } = await getDb(c.env.DATABASE_URL)
 
   const outgoing = await db
     .select({ id: noteLinks.targetNoteId })
@@ -170,7 +170,7 @@ app.get("/notes/:id", async (c) => {
   const id = Number(c.req.param("id"))
   if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400)
 
-  const ctx = await getDb(c.env.HYPERDRIVE)
+  const ctx = await getDb(c.env.DATABASE_URL)
   const { db, eq, notes } = ctx
   const userId = await getUserId(ctx, c.get("userId"))
   if (!userId) return c.json({ error: "User not found" }, 404)
@@ -189,9 +189,10 @@ app.get("/notes/:id", async (c) => {
 
 // POST /notes  – create note for the authenticated user
 // Non-critical work (wikilinks, embeddings) deferred to background via
-// ctx.waitUntil() to minimize DB pool pressure and prevent Worker hangs.
+// ctx.waitUntil() for fast response — Neon HTTP is stateless so no
+// pool pressure concern. If background tasks fail, note still exists.
 app.post("/notes", async (c) => {
-  const ctx = await getDb(c.env.HYPERDRIVE)
+  const ctx = await getDb(c.env.DATABASE_URL)
   const { db, eq, sql, notes } = ctx
   const userId = await getUserId(ctx, c.get("userId"))
   const { title, content } = await c.req.json()
@@ -230,7 +231,7 @@ app.post("/notes", async (c) => {
 // PUT /notes  – update note (must belong to caller)
 // Wikilinks + embeddings deferred to background.
 app.put("/notes", async (c) => {
-  const ctx = await getDb(c.env.HYPERDRIVE)
+  const ctx = await getDb(c.env.DATABASE_URL)
   const { db, eq, sql, notes } = ctx
   const { id, title, content } = await c.req.json()
 
@@ -283,7 +284,7 @@ app.put("/notes", async (c) => {
 // without a separate SELECT. If the note doesn't belong to the caller,
 // the WHERE matches nothing and we return 404.
 app.delete("/notes", async (c) => {
-  const ctx = await getDb(c.env.HYPERDRIVE)
+  const ctx = await getDb(c.env.DATABASE_URL)
   const { db, eq, and, notes } = ctx
   const userId = await getUserId(ctx, c.get("userId"))
   if (!userId) return c.json({ error: "User not found" }, 404)
@@ -308,7 +309,7 @@ app.delete("/notes", async (c) => {
 
 // GET /notesCount/:id  – count notes for a user (by user's id, not clerkId)
 app.get("/notesCount/:id", async (c) => {
-  const { db, eq, sql, notes } = await getDb(c.env.HYPERDRIVE)
+  const { db, eq, sql, notes } = await getDb(c.env.DATABASE_URL)
   const userId = Number(c.req.param("id"))
 
   const [result] = await db
@@ -334,8 +335,8 @@ export default {
    * pay the cold-start CPU cost.
    *
    * Every 2 minutes this fires and calls getDb(), which:
-   *   1. Dynamically imports pg + drizzle-orm + schema (~5ms CPU)
-   *   2. Creates the Hyperdrive Pool (~1ms CPU)
+   *   1. Dynamically imports @neondatabase/serverless + drizzle-orm + schema (~5ms CPU)
+   *   2. Creates the Neon SQL executor (~1ms CPU)
    *   3. Caches everything in the isolate's module-level state
    *
    * After this, user requests find everything pre-loaded:
@@ -343,7 +344,7 @@ export default {
    */
   async scheduled(event, env, ctx) {
     try {
-      ctx.waitUntil(getDb(env.HYPERDRIVE))
+      ctx.waitUntil(getDb(env.DATABASE_URL))
     } catch (e) {
       // Non-fatal — the Worker stays warm even if pre-warm fails
     }

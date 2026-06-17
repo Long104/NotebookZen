@@ -1,56 +1,39 @@
 /**
  * Lazy-loaded database context.
  *
- * ALL database-related modules (pg, drizzle-orm, schema) are imported
- * dynamically on first call — NONE load at Worker cold start module scope.
+ * ALL database-related modules (@neondatabase/serverless, drizzle-orm, schema)
+ * are imported dynamically on first call — NONE load at Worker cold start
+ * module scope.
  *
  * Returns a context object with everything handlers need:
- *   { db, pool, eq, desc, sql, inArray, and, users, notes, noteLinks, settings }
+ *   { db, eq, desc, sql, inArray, and, users, notes, noteLinks, settings }
  *
- * Pool configuration tuned to prevent Worker hangs:
- *   - connectionTimeoutMillis: fail fast (3s) instead of hanging forever
- *     when Hyperdrive/Supabase pool is exhausted. Hono's error handler
- *     catches the timeout → returns 500 WITH CORS headers → browser can
- *     read the error → fetchWithRetry can retry.
- *   - idleTimeoutMillis: aggressively close idle connections to free pool.
- *   - max: keep pool small (3) to avoid overwhelming upstream.
+ * Uses Neon's serverless HTTP driver (no connection pool):
+ *   - Every query is a stateless HTTP request → no pool to exhaust.
+ *   - No hanging, no timeouts, no retries needed for pool exhaustion.
+ *   - Works seamlessly in background tasks (ctx.waitUntil).
  */
 
 let cache = null
 
-export async function getDb(hyperdrive) {
+export async function getDb(databaseUrl) {
   if (cache) return cache
 
   // Load ALL heavy modules in parallel — deferred from cold start
-  const [{ Pool }, { drizzle }, drizzleUtils, schema] = await Promise.all([
-    import("pg"),
-    import("drizzle-orm/node-postgres"),
+  const [{ neon }, { drizzle }, drizzleUtils, schema] = await Promise.all([
+    import("@neondatabase/serverless"),
+    import("drizzle-orm/neon-http"),
     import("drizzle-orm"),
     import("./schema.js"),
   ])
 
-  const pool = new Pool({
-    connectionString: hyperdrive.connectionString,
-    // Fail fast instead of hanging — prevents Cloudflare "Worker hung" kills
-    connectionTimeoutMillis: 3000,
-    // Aggressively reclaim idle connections
-    idleTimeoutMillis: 5000,
-    // Small pool — Hyperdrive manages upstream, we just need local sockets
-    max: 3,
-  })
-
-  // If the pool errors (e.g., connection dies), clear the cache so the
-  // next request creates a fresh pool instead of reusing a broken one.
-  pool.on("error", (err) => {
-    console.error("PG pool error:", err?.message)
-    cache = null
-  })
-
-  const db = drizzle(pool, { schema })
+  // neon() returns a tagged-template SQL executor — every call is an
+  // HTTP request to Neon's proxy. No pool, no connection overhead.
+  const neonSql = neon(databaseUrl)
+  const db = drizzle(neonSql, { schema })
 
   cache = {
     db,
-    pool,
     // Drizzle query utilities
     eq: drizzleUtils.eq,
     desc: drizzleUtils.desc,

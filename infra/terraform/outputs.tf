@@ -32,3 +32,21 @@ output "supabase_api_url" {
   description = "Supabase REST API URL (for SUPABASE_URL env var)"
   value       = "https://${supabase_project.notebookzen.id}.supabase.co"
 }
+
+// ─── Neon ───────────────────────────────────────────────────────────────────
+
+output "neon_project_id" {
+  description = "Neon project ID"
+  value       = neon_project.notebookzen.id
+}
+
+output "neon_database_url" {
+  description = "Neon database URL (set as Worker secret DATABASE_URL)"
+  value       = "postgresql://${neon_role.notebookzen.name}:${neon_role.notebookzen.password}@${neon_project.notebookzen.branch.endpoint.host}/${neon_database.notebookzen.name}?sslmode=require"
+  sensitive   = true
+}
+
+output "neon_psql_command" {
+  description = "Ready-to-run psql command for running migrations"
+  value       = "psql \"$(terraform output -raw neon_database_url)\" -f backend/db/migrations/neon_init.sql"
+}
