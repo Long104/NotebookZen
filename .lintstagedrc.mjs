@@ -14,15 +14,20 @@ const buildEslintCommand = (packageDir, filenames) => {
   return `eslint --config ${packageDir}/eslint.config.mjs --fix ${files}`;
 };
 
+const buildPrettierCommand = (filenames) => {
+  const files = filenames.map((f) => `"${f}"`).join(" ");
+  return `prettier --write ${files}`;
+};
+
 const config = {
   "frontend/**/*.{ts,tsx}": (filenames) => {
-    return [buildEslintCommand("frontend", filenames), "prettier --write"];
+    return [buildEslintCommand("frontend", filenames), buildPrettierCommand(filenames)];
   },
   "backend/**/*.js": (filenames) => {
-    return [buildEslintCommand("backend", filenames), "prettier --write"];
+    return [buildEslintCommand("backend", filenames), buildPrettierCommand(filenames)];
   },
-  "*.{json,md,yml,yaml}": ["prettier --write"],
-  "*.{css,scss,postcss}": ["prettier --write"],
+  "*.{json,md,yml,yaml}": (filenames) => buildPrettierCommand(filenames),
+  "*.{css,scss,postcss}": (filenames) => buildPrettierCommand(filenames),
 };
 
 export default config;
