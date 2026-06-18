@@ -73,6 +73,7 @@ app.route("/api/webhooks", webhookRoutes);
 
 // ─── Protected route guards ────────────────────────────────────────────────
 app.use("/notes/*", requireAuth);
+app.use("/folders/*", requireAuth);
 app.use("/api/chat", requireAuth);
 app.use("/api/settings/*", requireAuth);
 app.use("/api/models/*", requireAuth);
@@ -184,11 +185,13 @@ app.post("/notes", async (c) => {
   const ctx = await getDb(c.env.DATABASE_URL);
   const { db, eq, sql, notes } = ctx;
   const userId = await getUserId(ctx, c.get("userId"));
-  const { title, content } = await c.req.json();
+  const { title, content, folderId } = await c.req.json();
 
   if (!userId) return c.json({ error: "User not found" }, 404);
 
-  const [newNote] = await db.insert(notes).values({ title, content, userId }).returning();
+  const noteData = { title, content, userId };
+  if (folderId) noteData.folderId = folderId;
+  const [newNote] = await db.insert(notes).values(noteData).returning();
 
   // Defer non-critical work — user gets immediate response, background
   // tasks finish within seconds. If they fail, note still exists.
@@ -309,6 +312,113 @@ app.get("/notesCount/:id", async (c) => {
     .where(eq(notes.userId, userId));
 
   return c.json(result?.count ?? 0);
+});
+
+// ─── Folders CRUD ───────────────────────────────────────────────────────────
+
+// GET /folders – list all folders for the authenticated user
+app.get("/folders", async (c) => {
+  const ctx = await getDb(c.env.DATABASE_URL);
+  const { db, eq, desc, folders } = ctx;
+  const userId = await getUserId(ctx, c.get("userId"));
+  if (!userId) return c.json([]);
+
+  const result = await db
+    .select()
+    .from(folders)
+    .where(eq(folders.userId, userId))
+    .orderBy(desc(folders.createdAt));
+
+  return c.json(result);
+});
+
+// POST /folders – create folder
+app.post("/folders", async (c) => {
+  const ctx = await getDb(c.env.DATABASE_URL);
+  const { db, folders } = ctx;
+  const userId = await getUserId(ctx, c.get("userId"));
+  const { name } = await c.req.json();
+
+  if (!userId) return c.json({ error: "User not found" }, 404);
+  if (!name?.trim()) return c.json({ error: "Folder name required" }, 400);
+
+  const [newFolder] = await db.insert(folders).values({ name: name.trim(), userId }).returning();
+
+  return c.json({ message: "Create Success!", data: newFolder });
+});
+
+// PUT /folders – rename folder
+app.put("/folders", async (c) => {
+  const ctx = await getDb(c.env.DATABASE_URL);
+  const { db, eq, and, folders } = ctx;
+  const userId = await getUserId(ctx, c.get("userId"));
+  const { id, name } = await c.req.json();
+
+  if (!userId) return c.json({ error: "User not found" }, 404);
+  if (!name?.trim()) return c.json({ error: "Folder name required" }, 400);
+
+  const [updated] = await db
+    .update(folders)
+    .set({ name: name.trim() })
+    .where(and(eq(folders.id, id), eq(folders.userId, userId)))
+    .returning();
+
+  if (!updated) return c.json({ error: "Folder not found" }, 404);
+
+  return c.json({ message: "Update success", data: updated });
+});
+
+// DELETE /folders – delete folder (notes become uncategorized via SET NULL)
+app.delete("/folders", async (c) => {
+  const ctx = await getDb(c.env.DATABASE_URL);
+  const { db, eq, and, folders } = ctx;
+  const userId = await getUserId(ctx, c.get("userId"));
+  const body = await c.req.json().catch(() => ({}));
+  const { id } = body;
+
+  if (!userId) return c.json({ error: "User not found" }, 404);
+
+  const folderId = Number(id);
+  if (!Number.isInteger(folderId) || folderId < 1) {
+    return c.json({ error: "Invalid folder ID" }, 400);
+  }
+
+  const [deleted] = await db
+    .delete(folders)
+    .where(and(eq(folders.id, folderId), eq(folders.userId, userId)))
+    .returning({ id: folders.id });
+
+  if (!deleted) return c.json({ error: "Folder not found" }, 404);
+
+  return c.json({ message: "delete data", data: { id } });
+});
+
+// PUT /notes/move – move note to a folder
+app.put("/notes/move", async (c) => {
+  const ctx = await getDb(c.env.DATABASE_URL);
+  const { db, eq, and, notes } = ctx;
+  const userId = await getUserId(ctx, c.get("userId"));
+  const { noteId, folderId } = await c.req.json();
+
+  if (!userId) return c.json({ error: "User not found" }, 404);
+
+  const nid = Number(noteId);
+  if (!Number.isInteger(nid) || nid < 1) {
+    return c.json({ error: "Invalid note ID" }, 400);
+  }
+
+  // folderId can be null (move to uncategorized)
+  const fid = folderId ? Number(folderId) : null;
+
+  const [updated] = await db
+    .update(notes)
+    .set({ folderId: fid })
+    .where(and(eq(notes.id, nid), eq(notes.userId, userId)))
+    .returning();
+
+  if (!updated) return c.json({ error: "Note not found" }, 404);
+
+  return c.json({ message: "Move success", data: updated });
 });
 
 // ─── AI Chat & Settings & Models ───────────────────────────────────────────

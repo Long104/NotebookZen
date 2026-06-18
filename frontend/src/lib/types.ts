@@ -6,8 +6,15 @@
  */
 
 export type Note = {
-    id: number;
-    title: string;
-    content?: string;
-    createdAt: string;
+  id: number;
+  title: string;
+  content?: string;
+  folderId?: number | null;
+  createdAt: string;
+};
+
+export type Folder = {
+  id: number;
+  name: string;
+  createdAt: string;
 };

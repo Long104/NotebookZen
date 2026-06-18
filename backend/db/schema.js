@@ -1,12 +1,4 @@
-import {
-  pgTable,
-  serial,
-  text,
-  integer,
-  timestamp,
-  unique,
-  customType,
-} from "drizzle-orm/pg-core"
+import { pgTable, serial, text, integer, timestamp, unique, customType } from "drizzle-orm/pg-core";
 
 /**
  * pgvector column type — stores a 768-dimensional float vector.
@@ -15,9 +7,9 @@ import {
  */
 const vector = customType({
   dataType() {
-    return "vector(768)"
+    return "vector(768)";
   },
-})
+});
 
 export const users = pgTable("User", {
   id: serial("id").primaryKey(),
@@ -25,18 +17,31 @@ export const users = pgTable("User", {
   username: text("username"),
   email: text("email").notNull().unique(),
   createdAt: timestamp("createdAt", { precision: 3 }).defaultNow().notNull(),
-})
+});
+
+export const folders = pgTable("Folder", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: timestamp("createdAt", { precision: 3 }).defaultNow().notNull(),
+});
 
 export const notes = pgTable("Note", {
   id: serial("id").primaryKey(),
   userId: integer("userId")
     .notNull()
     .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+  folderId: integer("folderId").references(() => folders.id, {
+    onDelete: "set null",
+    onUpdate: "cascade",
+  }),
   title: text("title").notNull(),
   content: text("content"),
   embedding: vector("embedding"),
   createdAt: timestamp("createdAt", { precision: 3 }).defaultNow().notNull(),
-})
+});
 
 export const settings = pgTable(
   "Setting",
@@ -51,7 +56,7 @@ export const settings = pgTable(
   (table) => ({
     uniqueUserKey: unique().on(table.userId, table.key),
   }),
-)
+);
 
 export const noteLinks = pgTable(
   "NoteLink",
@@ -68,4 +73,4 @@ export const noteLinks = pgTable(
   (table) => ({
     uniqueLink: unique().on(table.sourceNoteId, table.targetNoteId),
   }),
-)
+);
