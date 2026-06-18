@@ -59,7 +59,3 @@ infra/terraform/.terraform/
 infra/terraform/*.tfstate*
 infra/terraform/*.tfplan*
 
-# agent skills (auto-downloaded by opencode, not committed)
-.agents/
-skills-lock.json
-
