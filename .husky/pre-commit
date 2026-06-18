@@ -5,5 +5,5 @@
 # 1. Secret scan (blocks if gitleaks finds anything)
 gitleaks protect --staged --redact --config .gitleaks.toml --verbose
 
-# Note: lint-staged can be added here once eslint/prettier are configured
-# npx lint-staged
+# 2. Format + lint staged files (eslint --fix → prettier --write)
+npx lint-staged

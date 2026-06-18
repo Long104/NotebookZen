@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.next/
+.wrangler/
+dist/
+out/
+build/
+
+# Env files
+.env
+.env.*
+.dev.vars
+
+# Lock files
+package-lock.json
+pnpm-lock.yaml
+bun.lock
+
+# Config files that shouldn't be formatted
+.wrangler/
+tsconfig.json
