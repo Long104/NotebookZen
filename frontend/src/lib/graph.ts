@@ -3,20 +3,20 @@ import type { Note } from "@/lib/types";
 export type { Note };
 
 export type GraphNode = {
-    id: number;
-    name: string;
-    val: number;
-    createdAt: string;
+  id: number;
+  name: string;
+  val: number;
+  createdAt: string;
 };
 
 export type GraphLink = {
-    source: number;
-    target: number;
+  source: number;
+  target: number;
 };
 
 export type GraphData = {
-    nodes: GraphNode[];
-    links: GraphLink[];
+  nodes: GraphNode[];
+  links: GraphLink[];
 };
 
 /**
@@ -27,11 +27,15 @@ const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
 
 /**
  * Extract all [[Note Title]] references from note content.
+ * Handles both raw [[wikilinks]] and escaped \[\[wikilinks\]\] (tiptap-markdown
+ * escapes brackets during ProseMirror → Markdown serialization).
  * Returns trimmed titles in their original casing.
  */
 export function extractWikilinks(content: string): string[] {
-    const matches = [...(content || "").matchAll(WIKILINK_RE)];
-    return matches.map((m) => m[1].trim());
+  // Strip backslash escapes before brackets so we catch both [[ and \[\[
+  const cleaned = (content || "").replace(/\\\[/g, "[").replace(/\\\]/g, "]");
+  const matches = [...cleaned.matchAll(WIKILINK_RE)];
+  return matches.map((m) => m[1].trim());
 }
 
 /**
@@ -47,38 +51,38 @@ export function extractWikilinks(content: string): string[] {
  * retrieval layer will consume the same { nodes, links } shape.
  */
 export function buildGraph(notes: Note[]): GraphData {
-    const titleToId = new Map<string, number>();
-    for (const note of notes) {
-        titleToId.set(note.title.toLowerCase().trim(), note.id);
+  const titleToId = new Map<string, number>();
+  for (const note of notes) {
+    titleToId.set(note.title.toLowerCase().trim(), note.id);
+  }
+
+  const degree = new Map<number, number>();
+  const linkSet = new Set<string>();
+  const links: GraphLink[] = [];
+
+  for (const note of notes) {
+    const refs = extractWikilinks(note.content || "");
+    for (const ref of refs) {
+      const targetId = titleToId.get(ref.toLowerCase().trim());
+      if (targetId === undefined) continue;
+      if (targetId === note.id) continue;
+
+      const key = `${note.id}-${targetId}`;
+      if (linkSet.has(key)) continue;
+      linkSet.add(key);
+
+      links.push({ source: note.id, target: targetId });
+      degree.set(note.id, (degree.get(note.id) || 0) + 1);
+      degree.set(targetId, (degree.get(targetId) || 0) + 1);
     }
+  }
 
-    const degree = new Map<number, number>();
-    const linkSet = new Set<string>();
-    const links: GraphLink[] = [];
+  const nodes: GraphNode[] = notes.map((note) => ({
+    id: note.id,
+    name: note.title,
+    val: 1 + (degree.get(note.id) || 0),
+    createdAt: note.createdAt,
+  }));
 
-    for (const note of notes) {
-        const refs = extractWikilinks(note.content || "");
-        for (const ref of refs) {
-            const targetId = titleToId.get(ref.toLowerCase().trim());
-            if (targetId === undefined) continue;
-            if (targetId === note.id) continue;
-
-            const key = `${note.id}-${targetId}`;
-            if (linkSet.has(key)) continue;
-            linkSet.add(key);
-
-            links.push({ source: note.id, target: targetId });
-            degree.set(note.id, (degree.get(note.id) || 0) + 1);
-            degree.set(targetId, (degree.get(targetId) || 0) + 1);
-        }
-    }
-
-    const nodes: GraphNode[] = notes.map((note) => ({
-        id: note.id,
-        name: note.title,
-        val: 1 + (degree.get(note.id) || 0),
-        createdAt: note.createdAt,
-    }));
-
-    return { nodes, links };
+  return { nodes, links };
 }
