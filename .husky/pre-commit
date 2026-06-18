@@ -6,4 +6,4 @@
 gitleaks protect --staged --redact --config .gitleaks.toml --verbose
 
 # 2. Format + lint staged files (eslint --fix → prettier --write)
-npx lint-staged
+pnpm lint-staged
