@@ -6,7 +6,19 @@ import { AppSidebar } from "@/components/app-sidebar";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Settings, Key, Cpu, Eye, EyeOff, Check, Loader2, Zap } from "lucide-react";
+import {
+  Settings,
+  Key,
+  Cpu,
+  Eye,
+  EyeOff,
+  Check,
+  Loader2,
+  Plus,
+  Trash2,
+  Zap,
+  Edit3,
+} from "lucide-react";
 import { useApi } from "@/lib/api";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 
@@ -17,95 +29,76 @@ type ModelOption = {
   isFree: boolean;
 };
 
-type SettingsData = {
-  ai_provider: string;
-  openrouter_api_key: string;
-  openrouter_api_key_set?: boolean;
-  openrouter_model: string;
-  google_api_key: string;
-  google_api_key_set?: boolean;
-  google_model: string;
+type AiConfig = {
+  id: string;
+  name: string;
+  provider: "openrouter" | "google";
+  model: string;
+  apiKey: string;
+  apiKeySet?: boolean;
 };
 
 const PROVIDERS = [
   {
-    id: "openrouter",
+    id: "openrouter" as const,
     name: "OpenRouter",
     desc: "100+ models via one API",
     keyPlaceholder: "sk-or-...",
-    modelsUrl: "/api/models/openrouter",
   },
   {
-    id: "google",
+    id: "google" as const,
     name: "Google AI",
     desc: "Gemini models directly",
     keyPlaceholder: "AIza...",
-    modelsUrl: "/api/models/google",
   },
-] as const;
+];
+
+function genId() {
+  return "cfg_" + Math.random().toString(36).slice(2, 10);
+}
 
 export default function SettingsPage() {
   const signedIn = useRequireAuth();
   const api = useApi();
 
-  const [settings, setSettings] = useState<SettingsData>({
-    ai_provider: "openrouter",
-    openrouter_api_key: "",
-    openrouter_api_key_set: false,
-    openrouter_model: "meta-llama/llama-3.3-70b-instruct:free",
-    google_api_key: "",
-    google_api_key_set: false,
-    google_model: "gemini-2.0-flash",
-  });
-
-  // Per-provider model lists fetched from backend
-  const [openrouterModels, setOpenrouterModels] = useState<ModelOption[]>([]);
-  const [googleModels, setGoogleModels] = useState<ModelOption[]>([]);
-  const [modelsLoading, setModelsLoading] = useState<Record<string, boolean>>({
-    openrouter: false,
-    google: false,
-  });
-
-  const [showKey, setShowKey] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [configs, setConfigs] = useState<AiConfig[]>([]);
+  const [activeConfigId, setActiveConfigId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
 
-  // ── Fetch saved settings on mount ──
+  // Editing state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
+
+  // Model lists per provider
+  const [modelLists, setModelLists] = useState<Record<string, ModelOption[]>>({
+    openrouter: [],
+    google: [],
+  });
+  const [modelsLoading, setModelsLoading] = useState<Record<string, boolean>>({
+    openrouter: false,
+    google: false,
+  });
+
   useEffect(() => {
     if (signedIn) {
       fetchSettings();
-    }
-  }, [signedIn]);
-
-  // ── Fetch model lists when provider changes ──
-  useEffect(() => {
-    if (!signedIn) return;
-    const provider = settings.ai_provider;
-    if (provider === "openrouter" && openrouterModels.length === 0) {
       fetchModels("openrouter");
-    }
-    if (provider === "google" && googleModels.length === 0) {
       fetchModels("google");
     }
-  }, [signedIn, settings.ai_provider]);
+  }, [signedIn]);
 
   async function fetchSettings() {
     try {
       const res = await api("/api/settings");
       if (res.ok) {
         const data = await res.json();
-        setSettings((prev) => ({
-          ...prev,
-          ...data,
-          openrouter_api_key: "",
-          google_api_key: "",
-          openrouter_api_key_set: data.openrouter_api_key_set || false,
-          google_api_key_set: data.google_api_key_set || false,
-        }));
+        setConfigs(data.configs || []);
+        setActiveConfigId(data.activeConfigId || null);
       }
     } catch (err) {
       console.error("Failed to fetch settings:", err);
@@ -120,11 +113,10 @@ export default function SettingsPage() {
       const res = await api(`/api/models/${provider}`);
       if (res.ok) {
         const data = await res.json();
-        if (provider === "openrouter") {
-          setOpenrouterModels(data.models || []);
-        } else {
-          setGoogleModels(data.models || []);
-        }
+        setModelLists((prev) => ({
+          ...prev,
+          [provider]: data.models || [],
+        }));
       }
     } catch (err) {
       console.error(`Failed to fetch ${provider} models:`, err);
@@ -138,30 +130,24 @@ export default function SettingsPage() {
     setMessage(null);
 
     try {
-      const toSave: Record<string, string> = {
-        ai_provider: settings.ai_provider,
-      };
-
-      if (settings.ai_provider === "openrouter") {
-        toSave.openrouter_model = settings.openrouter_model;
-        if (settings.openrouter_api_key) {
-          toSave.openrouter_api_key = settings.openrouter_api_key;
-        }
-      } else {
-        toSave.google_model = settings.google_model;
-        if (settings.google_api_key) {
-          toSave.google_api_key = settings.google_api_key;
-        }
-      }
-
       const res = await api("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings: toSave }),
+        body: JSON.stringify({
+          configs: configs.map((c) => ({
+            id: c.id,
+            name: c.name,
+            provider: c.provider,
+            model: c.model,
+            apiKey: c.apiKey,
+          })),
+          activeConfigId,
+        }),
       });
 
       if (res.ok) {
         setMessage({ type: "success", text: "Settings saved!" });
+        setEditingId(null);
         await fetchSettings();
       } else {
         const data = await res.json();
@@ -177,27 +163,38 @@ export default function SettingsPage() {
     }
   }
 
-  function updateField(field: keyof SettingsData, value: string) {
-    setSettings((prev) => ({ ...prev, [field]: value }));
+  function addConfig(provider: "openrouter" | "google") {
+    const newConfig: AiConfig = {
+      id: genId(),
+      name: PROVIDERS.find((p) => p.id === provider)!.name,
+      provider,
+      model:
+        provider === "openrouter" ? "meta-llama/llama-3.3-70b-instruct:free" : "gemini-2.0-flash",
+      apiKey: "",
+    };
+    setConfigs((prev) => [...prev, newConfig]);
+    setActiveConfigId(newConfig.id);
+    setEditingId(newConfig.id);
+  }
+
+  function updateConfig(id: string, field: keyof AiConfig, value: string) {
+    setConfigs((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
+  }
+
+  function deleteConfig(id: string) {
+    setConfigs((prev) => prev.filter((c) => c.id !== id));
+    if (activeConfigId === id) {
+      setActiveConfigId(configs.find((c) => c.id !== id)?.id || null);
+    }
+  }
+
+  function activateConfig(id: string) {
+    setActiveConfigId(id);
   }
 
   if (!signedIn) return null;
 
-  // Current provider config
-  const activeProvider = PROVIDERS.find((p) => p.id === settings.ai_provider)!;
-  const isKeySet =
-    settings.ai_provider === "openrouter"
-      ? settings.openrouter_api_key_set
-      : settings.google_api_key_set;
-  const currentModel =
-    settings.ai_provider === "openrouter" ? settings.openrouter_model : settings.google_model;
-
-  // Model list for active provider
-  const modelList = settings.ai_provider === "openrouter" ? openrouterModels : googleModels;
-  const isModelsLoading = modelsLoading[settings.ai_provider] || false;
-
-  // Label for current model
-  const currentModelLabel = modelList.find((m) => m.id === currentModel)?.label || currentModel;
+  const activeConfig = configs.find((c) => c.id === activeConfigId);
 
   return (
     <SidebarProvider>
@@ -216,8 +213,8 @@ export default function SettingsPage() {
                 </h1>
               </div>
               <p className="text-sm text-[var(--zen-on-surface-variant)] leading-relaxed">
-                Bring your own key — connect your AI provider to power the chat assistant. Your keys
-                are stored securely and never shared.
+                Save multiple AI configurations. Switch between them anytime — handy when a free
+                model hits its daily limit.
               </p>
             </div>
 
@@ -226,231 +223,268 @@ export default function SettingsPage() {
                 <Loader2 className="animate-spin text-[var(--zen-on-surface-variant)]" size={24} />
               </div>
             ) : (
-              <div className="space-y-8">
-                {/* ── Current Configuration Card ── */}
-                <div className="rounded-xl border border-[var(--zen-outline-variant)] bg-[var(--zen-surface-low)] p-5">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Zap size={14} className="text-[var(--zen-primary)]" />
-                    <span className="text-xs font-medium tracking-widest uppercase text-[var(--zen-on-surface-variant)]">
-                      Current Configuration
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wider text-[var(--zen-on-surface-variant)] mb-1">
-                        Provider
-                      </div>
-                      <div className="text-sm font-medium text-[var(--zen-on-surface)]">
-                        {activeProvider.name}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wider text-[var(--zen-on-surface-variant)] mb-1">
-                        Model
-                      </div>
-                      <div
-                        className="text-sm font-medium text-[var(--zen-on-surface)] truncate"
-                        title={currentModel}
-                      >
-                        {currentModelLabel}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wider text-[var(--zen-on-surface-variant)] mb-1">
-                        API Key
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {isKeySet ? (
-                          <>
-                            <Check size={14} className="text-[var(--zen-primary)]" />
-                            <span className="text-sm font-medium text-[var(--zen-on-surface)]">
-                              Connected
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-sm text-[var(--zen-error)]">Not set</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── Provider Selection ── */}
-                <section className="space-y-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Cpu size={16} className="text-[var(--zen-on-surface-variant)]" />
-                    <span className="text-xs font-medium tracking-widest uppercase text-[var(--zen-on-surface-variant)]">
-                      AI Provider
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    {PROVIDERS.map((provider) => (
-                      <button
-                        key={provider.id}
-                        onClick={() => updateField("ai_provider", provider.id)}
-                        className={`relative p-4 rounded-xl text-left transition-all duration-300 cursor-pointer
-                          ${
-                            settings.ai_provider === provider.id
-                              ? "bg-[var(--zen-primary-container)] text-[var(--zen-on-primary-container)]"
-                              : "bg-[var(--zen-surface-low)] text-[var(--zen-on-surface-variant)] hover:bg-[var(--zen-surface-high)]"
-                          }`}
-                      >
-                        {settings.ai_provider === provider.id && (
-                          <Check
-                            size={14}
-                            className="absolute top-3 right-3 text-[var(--zen-primary)]"
-                          />
-                        )}
-                        <div className="font-medium text-sm">{provider.name}</div>
-                        <div className="text-xs mt-1 opacity-70">{provider.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-
-                {/* ── API Key ── */}
-                <section className="space-y-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Key size={16} className="text-[var(--zen-on-surface-variant)]" />
-                    <span className="text-xs font-medium tracking-widest uppercase text-[var(--zen-on-surface-variant)]">
-                      {activeProvider.name} API Key
-                    </span>
-                    {isKeySet && (
-                      <span className="text-[10px] bg-[var(--zen-primary-container)] text-[var(--zen-on-primary-container)] px-2 py-0.5 rounded-full ml-2">
-                        Key saved
+              <div className="space-y-6">
+                {/* ── Active Config Banner ── */}
+                {activeConfig && (
+                  <div className="rounded-xl border border-[var(--zen-outline-variant)] bg-[var(--zen-surface-low)] p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Zap size={14} className="text-[var(--zen-primary)]" />
+                      <span className="text-xs font-medium tracking-widest uppercase text-[var(--zen-on-surface-variant)]">
+                        Active Now
                       </span>
-                    )}
-                  </div>
-
-                  <div className="relative">
-                    <Input
-                      type={showKey ? "text" : "password"}
-                      placeholder={
-                        isKeySet
-                          ? "Enter new key to replace saved key"
-                          : activeProvider.keyPlaceholder
-                      }
-                      value={
-                        settings.ai_provider === "openrouter"
-                          ? settings.openrouter_api_key
-                          : settings.google_api_key
-                      }
-                      onChange={(e) =>
-                        updateField(
-                          settings.ai_provider === "openrouter"
-                            ? "openrouter_api_key"
-                            : "google_api_key",
-                          e.target.value,
-                        )
-                      }
-                      className="pr-10 bg-[var(--zen-surface-lowest)] border-[var(--zen-outline-variant)]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowKey(!showKey)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--zen-on-surface-variant)] hover:text-[var(--zen-on-surface)] transition-colors"
-                    >
-                      {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
-                  </div>
-                </section>
-
-                {/* ── Model Selection ── */}
-                <section className="space-y-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Cpu size={16} className="text-[var(--zen-on-surface-variant)]" />
-                    <span className="text-xs font-medium tracking-widest uppercase text-[var(--zen-on-surface-variant)]">
-                      Model ({activeProvider.name})
-                    </span>
-                  </div>
-
-                  {isModelsLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-[var(--zen-on-surface-variant)]">
-                      <Loader2 size={14} className="animate-spin" />
-                      Loading available models...
                     </div>
-                  ) : (
-                    <div className="relative">
-                      <select
-                        value={currentModel}
-                        onChange={(e) =>
-                          updateField(
-                            settings.ai_provider === "openrouter"
-                              ? "openrouter_model"
-                              : "google_model",
-                            e.target.value,
-                          )
-                        }
-                        className="w-full h-9 rounded-md bg-[var(--zen-surface-lowest)] border border-[var(--zen-outline-variant)] px-3 text-sm text-[var(--zen-on-surface)] appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--zen-primary)]/30 focus:border-[var(--zen-primary)]"
-                      >
-                        {/* If current model not in list, show it at top */}
-                        {!modelList.find((m) => m.id === currentModel) && (
-                          <option value={currentModel}>{currentModel} (current)</option>
-                        )}
-                        {/* Free models group */}
-                        {modelList.some((m) => m.isFree) && (
-                          <optgroup label="── Free Models ──">
-                            {modelList
-                              .filter((m) => m.isFree)
-                              .map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.label} ({Math.round(m.context / 1000)}k)
-                                </option>
-                              ))}
-                          </optgroup>
-                        )}
-                        {/* Paid models group */}
-                        {modelList.some((m) => !m.isFree) && (
-                          <optgroup label="── Paid Models ──">
-                            {modelList
-                              .filter((m) => !m.isFree)
-                              .map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.label} ({Math.round(m.context / 1000)}k)
-                                </option>
-                              ))}
-                          </optgroup>
-                        )}
-                      </select>
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--zen-on-surface-variant)]">
-                        ▾
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-medium text-[var(--zen-on-surface)]">
+                          {activeConfig.name}
+                        </span>
+                        <span className="text-xs text-[var(--zen-on-surface-variant)] ml-2">
+                          {activeConfig.model}
+                        </span>
                       </div>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--zen-primary-container)] text-[var(--zen-on-primary-container)] capitalize">
+                        {activeConfig.provider}
+                      </span>
                     </div>
-                  )}
-
-                  {/* Custom model input */}
-                  <div>
-                    <label className="text-xs text-[var(--zen-on-surface-variant)] mb-1 block">
-                      Or enter a custom model ID
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder={
-                        settings.ai_provider === "openrouter"
-                          ? "e.g. meta-llama/llama-3.3-70b-instruct:free"
-                          : "e.g. gemini-2.0-flash-lite"
-                      }
-                      value={currentModel}
-                      onChange={(e) =>
-                        updateField(
-                          settings.ai_provider === "openrouter"
-                            ? "openrouter_model"
-                            : "google_model",
-                          e.target.value,
-                        )
-                      }
-                      className="bg-[var(--zen-surface-lowest)] border-[var(--zen-outline-variant)]"
-                    />
                   </div>
-                </section>
+                )}
+
+                {/* ── Config List ── */}
+                {configs.map((cfg) => {
+                  const isActive = cfg.id === activeConfigId;
+                  const isEditing = cfg.id === editingId;
+                  const models = modelLists[cfg.provider] || [];
+                  const providerInfo = PROVIDERS.find((p) => p.id === cfg.provider)!;
+
+                  return (
+                    <div
+                      key={cfg.id}
+                      className={`rounded-xl border transition-all duration-200 ${
+                        isActive
+                          ? "border-[var(--zen-primary)] bg-[var(--zen-surface-low)]"
+                          : "border-[var(--zen-outline-variant)] bg-[var(--zen-surface)]"
+                      }`}
+                    >
+                      {/* Config header — collapsed view */}
+                      <div
+                        className="flex items-center justify-between p-4 cursor-pointer"
+                        onClick={() => !isEditing && activateConfig(cfg.id)}
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Radio-like indicator */}
+                          <div
+                            className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                              isActive
+                                ? "border-[var(--zen-primary)]"
+                                : "border-[var(--zen-outline-variant)]"
+                            }`}
+                          >
+                            {isActive && (
+                              <div className="w-2 h-2 rounded-full bg-[var(--zen-primary)]" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-[var(--zen-on-surface)]">
+                              {cfg.name}
+                            </div>
+                            <div className="text-xs text-[var(--zen-on-surface-variant)]">
+                              {cfg.model}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {cfg.apiKeySet && (
+                            <span className="text-[10px] bg-[var(--zen-primary-container)] text-[var(--zen-on-primary-container)] px-2 py-0.5 rounded-full">
+                              Key set
+                            </span>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingId(isEditing ? null : cfg.id);
+                            }}
+                            className="text-[var(--zen-on-surface-variant)] hover:text-[var(--zen-on-surface)] transition-colors p-1"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteConfig(cfg.id);
+                            }}
+                            className="text-[var(--zen-on-surface-variant)] hover:text-[var(--zen-error)] transition-colors p-1"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expanded edit view */}
+                      {isEditing && (
+                        <div className="px-4 pb-4 space-y-4 border-t border-[var(--zen-outline-variant)] pt-4">
+                          {/* Name */}
+                          <div>
+                            <label className="text-xs text-[var(--zen-on-surface-variant)] mb-1 block">
+                              Config Name
+                            </label>
+                            <Input
+                              type="text"
+                              value={cfg.name}
+                              onChange={(e) => updateConfig(cfg.id, "name", e.target.value)}
+                              placeholder="e.g. Llama 70B Free"
+                              className="bg-[var(--zen-surface-lowest)] border-[var(--zen-outline-variant)]"
+                            />
+                          </div>
+
+                          {/* Provider */}
+                          <div>
+                            <label className="text-xs text-[var(--zen-on-surface-variant)] mb-1 block">
+                              Provider
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {PROVIDERS.map((p) => (
+                                <button
+                                  key={p.id}
+                                  onClick={() => updateConfig(cfg.id, "provider", p.id)}
+                                  className={`p-3 rounded-lg text-left text-sm transition-all ${
+                                    cfg.provider === p.id
+                                      ? "bg-[var(--zen-primary-container)] text-[var(--zen-on-primary-container)]"
+                                      : "bg-[var(--zen-surface-low)] text-[var(--zen-on-surface-variant)]"
+                                  }`}
+                                >
+                                  {p.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* API Key */}
+                          <div>
+                            <label className="text-xs text-[var(--zen-on-surface-variant)] mb-1 block">
+                              API Key{" "}
+                              {cfg.apiKeySet && (
+                                <span className="text-[var(--zen-primary)]">
+                                  (saved — enter new to replace)
+                                </span>
+                              )}
+                            </label>
+                            <div className="relative">
+                              <Input
+                                type={showKey[cfg.id] ? "text" : "password"}
+                                value={cfg.apiKey}
+                                onChange={(e) => updateConfig(cfg.id, "apiKey", e.target.value)}
+                                placeholder={
+                                  cfg.apiKeySet ? "•••••••• (saved)" : providerInfo.keyPlaceholder
+                                }
+                                className="pr-10 bg-[var(--zen-surface-lowest)] border-[var(--zen-outline-variant)]"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShowKey((prev) => ({
+                                    ...prev,
+                                    [cfg.id]: !prev[cfg.id],
+                                  }))
+                                }
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--zen-on-surface-variant)] hover:text-[var(--zen-on-surface)]"
+                              >
+                                {showKey[cfg.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Model */}
+                          <div>
+                            <label className="text-xs text-[var(--zen-on-surface-variant)] mb-1 block">
+                              Model
+                            </label>
+                            {modelsLoading[cfg.provider] ? (
+                              <div className="flex items-center gap-2 text-sm text-[var(--zen-on-surface-variant)]">
+                                <Loader2 size={14} className="animate-spin" />
+                                Loading models...
+                              </div>
+                            ) : (
+                              <div className="relative">
+                                <select
+                                  value={cfg.model}
+                                  onChange={(e) => updateConfig(cfg.id, "model", e.target.value)}
+                                  className="w-full h-9 rounded-md bg-[var(--zen-surface-lowest)] border border-[var(--zen-outline-variant)] px-3 text-sm text-[var(--zen-on-surface)] appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--zen-primary)]/30"
+                                >
+                                  {!models.find((m) => m.id === cfg.model) && (
+                                    <option value={cfg.model}>{cfg.model} (current)</option>
+                                  )}
+                                  {models.some((m) => m.isFree) && (
+                                    <optgroup label="── Free ──">
+                                      {models
+                                        .filter((m) => m.isFree)
+                                        .map((m) => (
+                                          <option key={m.id} value={m.id}>
+                                            {m.label} ({Math.round(m.context / 1000)}k)
+                                          </option>
+                                        ))}
+                                    </optgroup>
+                                  )}
+                                  {models.some((m) => !m.isFree) && (
+                                    <optgroup label="── Paid ──">
+                                      {models
+                                        .filter((m) => !m.isFree)
+                                        .map((m) => (
+                                          <option key={m.id} value={m.id}>
+                                            {m.label} ({Math.round(m.context / 1000)}k)
+                                          </option>
+                                        ))}
+                                    </optgroup>
+                                  )}
+                                </select>
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--zen-on-surface-variant)]">
+                                  ▾
+                                </div>
+                              </div>
+                            )}
+                            {/* Custom model input */}
+                            <Input
+                              type="text"
+                              value={cfg.model}
+                              onChange={(e) => updateConfig(cfg.id, "model", e.target.value)}
+                              placeholder="Or type a custom model ID"
+                              className="mt-2 bg-[var(--zen-surface-lowest)] border-[var(--zen-outline-variant)] text-sm"
+                            />
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditingId(null)}
+                            className="text-xs"
+                          >
+                            Done
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* ── Add Config Buttons ── */}
+                <div className="flex gap-2">
+                  {PROVIDERS.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => addConfig(p.id)}
+                      className="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-[var(--zen-outline-variant)] text-sm text-[var(--zen-on-surface-variant)] hover:bg-[var(--zen-surface-low)] hover:border-[var(--zen-primary)] transition-all"
+                    >
+                      <Plus size={14} />
+                      Add {p.name}
+                    </button>
+                  ))}
+                </div>
 
                 {/* ── Save Button ── */}
                 <div className="pt-4">
                   <Button
                     onClick={handleSave}
-                    disabled={saving}
-                    className="bg-[var(--zen-primary)] text-[var(--zen-on-primary)] hover:bg-[var(--zen-primary)]/90 px-8 rounded-full transition-all duration-300"
+                    disabled={saving || configs.length === 0}
+                    className="bg-[var(--zen-primary)] text-[var(--zen-on-primary)] hover:bg-[var(--zen-primary)]/90 px-8 rounded-full"
                   >
                     {saving ? (
                       <>
@@ -458,7 +492,7 @@ export default function SettingsPage() {
                         Saving...
                       </>
                     ) : (
-                      "Save Settings"
+                      "Save All"
                     )}
                   </Button>
 
