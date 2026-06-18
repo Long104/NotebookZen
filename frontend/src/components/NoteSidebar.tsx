@@ -32,6 +32,7 @@ export default function NoteSidebar() {
   const [expandedFolders, setExpandedFolders] = useState<Set<number | "all">>(new Set(["all"]));
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [dragOverFolderId, setDragOverFolderId] = useState<number | "all" | null>(null);
 
   useEffect(() => {
     fetchNotes();
@@ -74,15 +75,21 @@ export default function NoteSidebar() {
     e.dataTransfer.effectAllowed = "move";
   }
 
-  function handleFolderDrop(e: React.DragEvent, folderId: number | null) {
+  function handleFolderDrop(e: React.DragEvent, folderId: number | "all" | null) {
     e.preventDefault();
+    setDragOverFolderId(null);
     const noteId = Number(e.dataTransfer.getData("text/note-id"));
-    if (noteId) moveNote(noteId, folderId);
+    if (noteId) moveNote(noteId, folderId === "all" ? null : folderId);
   }
 
-  function handleFolderDragOver(e: React.DragEvent) {
+  function handleFolderDragOver(e: React.DragEvent, folderId: number | "all" | null) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
+    setDragOverFolderId(folderId);
+  }
+
+  function handleFolderDragLeave() {
+    setDragOverFolderId(null);
   }
 
   // Filter notes by selected folder
@@ -130,13 +137,18 @@ export default function NoteSidebar() {
         <div className="mb-2">
           <button
             onClick={() => toggleFolder("all")}
-            onDrop={(e) => handleFolderDrop(e, null)}
-            onDragOver={handleFolderDragOver}
+            onDrop={(e) => handleFolderDrop(e, "all")}
+            onDragOver={(e) => handleFolderDragOver(e, "all")}
+            onDragLeave={handleFolderDragLeave}
             className={`w-full flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
               selectedFolderId === null
                 ? "text-[var(--zen-primary)]"
                 : "text-[var(--zen-on-surface-variant)]"
-            } hover:bg-[var(--zen-surface)]`}
+            } hover:bg-[var(--zen-surface)] ${
+              dragOverFolderId === "all"
+                ? "ring-1 ring-[var(--zen-primary)] bg-[var(--zen-primary-container)]"
+                : ""
+            }`}
           >
             {expandedFolders.has("all") ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             <FileText size={12} />
@@ -165,12 +177,17 @@ export default function NoteSidebar() {
                 <button
                   onClick={() => toggleFolder(folder.id)}
                   onDrop={(e) => handleFolderDrop(e, folder.id)}
-                  onDragOver={handleFolderDragOver}
+                  onDragOver={(e) => handleFolderDragOver(e, folder.id)}
+                  onDragLeave={handleFolderDragLeave}
                   className={`flex-1 flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
                     selectedFolderId === folder.id
                       ? "text-[var(--zen-primary)]"
                       : "text-[var(--zen-on-surface-variant)]"
-                  } hover:bg-[var(--zen-surface)]`}
+                  } hover:bg-[var(--zen-surface)] ${
+                    dragOverFolderId === folder.id
+                      ? "ring-1 ring-[var(--zen-primary)] bg-[var(--zen-primary-container)]"
+                      : ""
+                  }`}
                 >
                   {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   {isExpanded ? <FolderOpen size={12} /> : <FolderIcon size={12} />}

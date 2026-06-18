@@ -114,7 +114,7 @@ async function createModel(config) {
 
 app.post("/chat", requireAuth, async (c) => {
   try {
-    const { question } = await c.req.json();
+    const { question, contextNoteIds } = await c.req.json();
 
     if (!question || !question.trim()) {
       return c.json({ error: "Question is required" }, 400);
@@ -156,7 +156,7 @@ app.post("/chat", requireAuth, async (c) => {
       retrievalMode = "fallback";
     }
 
-    if (contextNotes.length === 0) {
+    if (contextNotes.length === 0 && !contextNoteIds?.length) {
       return c.json({
         answer:
           "You don't have any notes yet. Create some notes and I'll be able to help you find information in them!",
@@ -164,13 +164,45 @@ app.post("/chat", requireAuth, async (c) => {
       });
     }
 
-    // ── Format notes into prompt ──
-    const formattedNotes = contextNotes
-      .map((note) => {
+    // ── Context notes (dragged from sidebar) — fetch by ID ──
+    const contextNoteBlocks = [];
+    const contextFetched = [];
+
+    if (contextNoteIds?.length > 0) {
+      const { db, inArray, eq, and, notes: notesTable } = ctx;
+      const fetched = await db
+        .select()
+        .from(notesTable)
+        .where(and(inArray(notesTable.id, contextNoteIds), eq(notesTable.userId, userId)));
+
+      for (const note of fetched) {
+        contextFetched.push(note);
+        contextNoteBlocks.push(
+          `[${note.title} (dragged)]\n${(note.content || "(empty)").slice(0, 1000)}`,
+        );
+      }
+    }
+
+    // ── Deduplicate retrieved notes against context notes ──
+    const excludedIds = new Set(contextFetched.map((n) => n.id));
+    const dedupedRetrieved = (contextNotes || []).filter((n) => !excludedIds.has(n.id));
+
+    // ── Format notes into prompt (context notes first) ──
+    const formattedNotes = [
+      ...contextNoteBlocks,
+      ...dedupedRetrieved.map((note) => {
         const content = (note.content || "(empty note)").slice(0, 500);
         return `[${note.title}]\n${content}`;
-      })
-      .join("\n\n---\n\n");
+      }),
+    ].join("\n\n---\n\n");
+
+    if (!formattedNotes.trim()) {
+      return c.json({
+        answer:
+          "You don't have any notes yet. Create some notes and I'll be able to help you find information in them!",
+        sources: [],
+      });
+    }
 
     // ── Create model + invoke ──
     const model = await createModel(config);
@@ -182,12 +214,21 @@ app.post("/chat", requireAuth, async (c) => {
       { role: "user", content: prompt },
     ]);
 
-    // ── Return only the notes that were actually used (topK vector matches) ──
-    const sources = contextNotes.slice(0, 3).map((note) => ({
-      id: note.id,
-      title: note.title,
-      createdAt: note.createdAt,
-    }));
+    // ── Sources: context notes first, then retrieved (deduped, max 3 total) ──
+    const allSourceNotes = [...contextFetched, ...dedupedRetrieved];
+    const seenIds = new Set();
+    const sources = allSourceNotes
+      .filter((n) => {
+        if (seenIds.has(n.id)) return false;
+        seenIds.add(n.id);
+        return true;
+      })
+      .slice(0, 3)
+      .map((note) => ({
+        id: note.id,
+        title: note.title,
+        createdAt: note.createdAt,
+      }));
 
     return c.json({
       answer: response.content,

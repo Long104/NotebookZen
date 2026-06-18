@@ -24,7 +24,7 @@ type ChatPanelContextValue = {
   togglePanel: () => void;
   openPanel: () => void;
   closePanel: () => void;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, contextNoteIds?: number[]) => Promise<void>;
   clearChat: () => void;
 };
 
@@ -49,7 +49,7 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, contextNoteIds?: number[]) => {
       if (!text.trim() || isLoading) return;
 
       const userMessage: Message = {
@@ -62,10 +62,15 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
 
       try {
+        const body: Record<string, unknown> = { question: userMessage.content };
+        if (contextNoteIds && contextNoteIds.length > 0) {
+          body.contextNoteIds = contextNoteIds;
+        }
+
         const response = await api("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: userMessage.content }),
+          body: JSON.stringify(body),
         });
 
         const data = await response.json();

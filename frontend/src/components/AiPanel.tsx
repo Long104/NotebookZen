@@ -2,14 +2,19 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useChatPanel } from "@/context/ChatPanelContext";
+import { useNotes } from "@/context/NotesContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import Link from "next/link";
 import { X, Send, Loader2, Trash2 } from "lucide-react";
 
 export default function AiPanel() {
-  const { isOpen, messages, isLoading, error, closePanel, sendMessage, clearChat } = useChatPanel();
+  const { isOpen, messages, isLoading, error, closePanel, sendMessage, clearChat, openPanel } =
+    useChatPanel();
+  const { notes } = useNotes();
   const isMobile = useIsMobile();
   const [input, setInput] = useState("");
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [contextNoteIds, setContextNoteIds] = useState<number[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -30,25 +35,38 @@ export default function AiPanel() {
   // Handle drag-and-drop from note sidebar
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
+    setIsDragOver(false);
     const noteId = e.dataTransfer.getData("text/note-id");
     if (noteId) {
-      // Pre-fill the input asking about this note
-      setInput(`Tell me about note #${noteId}: `);
-      inputRef.current?.focus();
+      const note = notes.find((n) => n.id === Number(noteId));
+      if (note) {
+        const snippet = note.content ? note.content.slice(0, 300) : "(empty)";
+        setInput(`about "${note.title}": ${snippet} — `);
+        setContextNoteIds((prev) => (prev.includes(note.id) ? prev : [...prev, note.id]));
+        if (!isOpen) openPanel();
+        setTimeout(() => inputRef.current?.focus(), 350);
+      }
     }
   }
 
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
+    setIsDragOver(true);
+  }
+
+  function handleDragLeave() {
+    setIsDragOver(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
     const text = input;
+    const ids = contextNoteIds.length > 0 ? [...contextNoteIds] : undefined;
     setInput("");
-    await sendMessage(text);
+    setContextNoteIds([]);
+    await sendMessage(text, ids);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -70,9 +88,17 @@ export default function AiPanel() {
         <aside
           className={`fixed top-0 right-0 h-full w-[380px] max-w-[calc(100vw-3rem)] z-50 flex flex-col
                         bg-[var(--zen-surface-low)] border-l border-dashed border-[var(--zen-outline-variant)]
-                        transition-transform duration-300 ease-in-out
-                        ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+                        transition-all duration-300 ease-in-out
+                        ${isOpen ? "translate-x-0" : "translate-x-full"}
+                        ${
+                          isDragOver
+                            ? "ring-2 ring-[var(--zen-primary)] bg-[var(--zen-primary-container)]/20"
+                            : ""
+                        }`}
           onKeyDown={handleKeyDown}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
         >
           <PanelContent
             messages={messages}
@@ -97,10 +123,13 @@ export default function AiPanel() {
 
   return (
     <aside
-      className="h-full w-full flex flex-col bg-[var(--zen-surface-low)] border-l border-dashed border-[var(--zen-outline-variant)]"
+      className={`h-full w-full flex flex-col bg-[var(--zen-surface-low)] border-l border-dashed border-[var(--zen-outline-variant)] transition-all ${
+        isDragOver ? "ring-2 ring-[var(--zen-primary)] bg-[var(--zen-primary-container)]/20" : ""
+      }`}
       onKeyDown={handleKeyDown}
       onDrop={handleDrop}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
     >
       <PanelContent
         messages={messages}
