@@ -58,7 +58,7 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
+    <div className="h-screen w-full flex flex-col bg-background overflow-hidden">
       <Navbar />
       <HeroSection />
     </div>
