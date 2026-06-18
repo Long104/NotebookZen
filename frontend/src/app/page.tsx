@@ -5,7 +5,6 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
-  Play,
   Search,
   Bell,
   ChevronDown,

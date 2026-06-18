@@ -80,6 +80,20 @@ app.use("/api/models/*", requireAuth);
 
 // ─── Notes CRUD ────────────────────────────────────────────────────────────
 
+/**
+ * Public-facing note column selection — excludes the 768-dim `embedding`
+ * vector, which is only used server-side for similarity search and would
+ * bloat every API payload if returned to the client.
+ */
+const notePublicColumns = (notes) => ({
+  id: notes.id,
+  userId: notes.userId,
+  folderId: notes.folderId,
+  title: notes.title,
+  content: notes.content,
+  createdAt: notes.createdAt,
+});
+
 // GET /notes  – list all notes for the authenticated user
 app.get("/notes", async (c) => {
   const ctx = await getDb(c.env.DATABASE_URL);
@@ -88,7 +102,7 @@ app.get("/notes", async (c) => {
   if (!userId) return c.json([]);
 
   const result = await db
-    .select()
+    .select(notePublicColumns(notes))
     .from(notes)
     .where(eq(notes.userId, userId))
     .orderBy(desc(notes.createdAt));
@@ -153,7 +167,10 @@ app.get("/notes/:id/neighbors", async (c) => {
 
   if (neighborIds.length === 0) return c.json([]);
 
-  const neighborNotes = await db.select().from(notes).where(inArray(notes.id, neighborIds));
+  const neighborNotes = await db
+    .select(notePublicColumns(notes))
+    .from(notes)
+    .where(inArray(notes.id, neighborIds));
 
   return c.json(neighborNotes);
 });
@@ -169,7 +186,11 @@ app.get("/notes/:id", async (c) => {
   const userId = await getUserId(ctx, c.get("userId"));
   if (!userId) return c.json({ error: "User not found" }, 404);
 
-  const [note] = await db.select().from(notes).where(eq(notes.id, id)).limit(1);
+  const [note] = await db
+    .select(notePublicColumns(notes))
+    .from(notes)
+    .where(eq(notes.id, id))
+    .limit(1);
 
   if (!note) return c.json({ error: "Note not found" }, 404);
   if (note.userId !== userId) return c.json({ error: "Unauthorized" }, 403);
@@ -396,7 +417,7 @@ app.delete("/folders", async (c) => {
 // PUT /notes/move – move note to a folder
 app.put("/notes/move", async (c) => {
   const ctx = await getDb(c.env.DATABASE_URL);
-  const { db, eq, and, notes } = ctx;
+  const { db, eq, and, notes, folders } = ctx;
   const userId = await getUserId(ctx, c.get("userId"));
   const { noteId, folderId } = await c.req.json();
 
@@ -409,6 +430,20 @@ app.put("/notes/move", async (c) => {
 
   // folderId can be null (move to uncategorized)
   const fid = folderId ? Number(folderId) : null;
+
+  // Verify the target folder belongs to the caller before moving — prevents
+  // an IDOR where a user could attach their note to another user's folder.
+  if (fid !== null) {
+    if (!Number.isInteger(fid) || fid < 1) {
+      return c.json({ error: "Invalid folder ID" }, 400);
+    }
+    const [ownedFolder] = await db
+      .select({ id: folders.id })
+      .from(folders)
+      .where(and(eq(folders.id, fid), eq(folders.userId, userId)))
+      .limit(1);
+    if (!ownedFolder) return c.json({ error: "Folder not found" }, 404);
+  }
 
   const [updated] = await db
     .update(notes)
