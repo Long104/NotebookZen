@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import AppLayout from "@/components/AppLayout";
 import ZenEditor from "@/components/editor/ZenEditor";
 import MarkdownRenderer from "@/components/editor/MarkdownRenderer";
@@ -8,13 +9,25 @@ import { Pencil, Trash2, Check, X, Loader2 } from "lucide-react";
 import { useNotes } from "@/context/NotesContext";
 
 function NotesPageContent() {
-  const { selectedNote, updateNote, deleteNote } = useNotes();
+  const { notes, selectedNote, setSelectedNote, updateNote, deleteNote } = useNotes();
+  const searchParams = useSearchParams();
+  const noteIdParam = searchParams ? searchParams.get("noteId") : null;
 
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    if (noteIdParam) {
+      const id = Number(noteIdParam);
+      const note = notes.find((n) => n.id === id);
+      if (note && (!selectedNote || selectedNote.id !== id)) {
+        setSelectedNote(note);
+      }
+    }
+  }, [noteIdParam, notes, selectedNote, setSelectedNote]);
 
   function handleEditNote() {
     if (!selectedNote) return;

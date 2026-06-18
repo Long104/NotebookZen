@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Instrument_Serif } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
-import { ThemeProvider } from "@/lib/theme";
-import { ChatPanelProvider } from "@/context/ChatPanelContext";
+import { AppProviders } from "@/components/AppProviders";
 import "./globals.css";
 
 const inter = Inter({
@@ -30,9 +29,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${instrumentSerif.variable} font-sans antialiased`}>
         <ClerkProvider>
-          <ThemeProvider>
-            <ChatPanelProvider>{children}</ChatPanelProvider>
-          </ThemeProvider>
+          <AppProviders>{children}</AppProviders>
         </ClerkProvider>
       </body>
     </html>

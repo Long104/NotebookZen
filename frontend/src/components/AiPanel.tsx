@@ -87,7 +87,7 @@ export default function AiPanel() {
         />
         <aside
           className={`fixed top-0 right-0 h-full w-[380px] max-w-[calc(100vw-3rem)] z-50 flex flex-col
-                        bg-[var(--zen-surface-low)] border-l border-dashed border-[var(--zen-outline-variant)]
+                        bg-[var(--zen-surface-lowest)]/75 backdrop-blur-xl border-l border-dashed border-[var(--zen-outline-variant)]
                         transition-all duration-300 ease-in-out
                         ${isOpen ? "translate-x-0" : "translate-x-full"}
                         ${
@@ -123,7 +123,7 @@ export default function AiPanel() {
 
   return (
     <aside
-      className={`h-full w-full flex flex-col bg-[var(--zen-surface-low)] border-l border-dashed border-[var(--zen-outline-variant)] transition-all ${
+      className={`h-full w-full flex flex-col bg-[var(--zen-surface-lowest)]/60 backdrop-blur-md border-l border-dashed border-[var(--zen-outline-variant)] transition-all ${
         isDragOver ? "ring-2 ring-[var(--zen-primary)] bg-[var(--zen-primary-container)]/20" : ""
       }`}
       onKeyDown={handleKeyDown}
@@ -241,10 +241,10 @@ function PanelContent({
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed ${
+              className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${
                 msg.role === "user"
-                  ? "bg-[var(--zen-primary)] text-[var(--zen-on-primary)]"
-                  : "bg-[var(--zen-surface-lowest)]"
+                  ? "bg-[var(--zen-primary-container)] text-[var(--zen-on-primary-container)] font-medium outline outline-1 outline-dashed outline-[var(--zen-outline-variant)]"
+                  : "bg-[var(--zen-surface-lowest)]/40 backdrop-blur-sm border border-[var(--zen-outline-variant)]/10 shadow-sm"
               }`}
             >
               <div className="whitespace-pre-wrap">{msg.content}</div>
@@ -294,7 +294,7 @@ function PanelContent({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about your notes..."
-            className="flex-1 px-3 py-2 bg-[var(--zen-surface-lowest)] rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[var(--zen-outline-variant)] focus:ring-dashed transition-all"
+            className="flex-1 px-3 py-2 bg-[var(--zen-surface-lowest)]/50 backdrop-blur-sm border border-[var(--zen-outline-variant)]/20 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[var(--zen-outline-variant)] focus:ring-dashed transition-all"
             disabled={isLoading}
           />
           <button
